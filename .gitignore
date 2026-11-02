@@ -1,0 +1,6 @@
+node_modules
+.unblackbox
+out
+play/dist
+play/src-tauri/target
+play/src-tauri/gen

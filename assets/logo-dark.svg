@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 240">
+  <defs>
+    <linearGradient id="beam" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#539bf5" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#539bf5" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g transform="translate(0 -6) scale(0.5)">
+    <path d="M140 272 L372 272 L436 36 L76 36 Z" fill="url(#beam)"/>
+    <path d="M140 272 L256 214 L372 272 L256 330 Z" fill="#539bf5" fill-opacity="0.35" stroke="#539bf5" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M140 272 L256 330 L256 460 L140 402 Z" fill="#161b22" stroke="#545d68" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M256 330 L372 272 L372 402 L256 460 Z" fill="#0d1117" stroke="#545d68" stroke-width="6" stroke-linejoin="round"/>
+    <g stroke="#539bf5" stroke-width="10" stroke-linecap="round" fill="none" filter="url(#glow)">
+      <path d="M256 272 L256 178 M256 178 L178 112 M256 178 L334 112"/>
+    </g>
+    <g filter="url(#glow)">
+      <circle cx="256" cy="178" r="20" fill="#539bf5"/>
+      <circle cx="178" cy="112" r="16" fill="#539bf5"/>
+      <circle cx="334" cy="112" r="16" fill="#57ab5a"/>
+    </g>
+  </g>
+  <text x="250" y="158" font-family="Inter, 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="118" font-weight="700" letter-spacing="-3"><tspan fill="#539bf5">un</tspan><tspan fill="#cdd9e5">blackbox</tspan></text>
+</svg>

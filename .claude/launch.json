@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "playground",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "preview", "out/queue-decoupling-play", "--outDir", ".", "--port", "4173", "--strictPort"],
+      "port": 4173
+    },
+    {
+      "name": "repo-files",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765"],
+      "port": 8765
+    }
+  ]
+}

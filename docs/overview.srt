@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:06,700
+Maya just joined the team, and asks the agent to explain the checkout queue as a video.
+
+2
+00:00:07,700 --> 00:00:15,333
+Unblackbox turns that ask into a narrated video. Let's follow it from question to finished file.
+
+3
+00:00:16,333 --> 00:00:24,933
+First, the agent reads the skill: rules for videos people actually understand, taken from learning research.
+
+4
+00:00:25,933 --> 00:00:31,433
+Then it maps the system and writes one JSON spec, a list of beats.
+
+5
+00:00:32,433 --> 00:00:39,500
+A beat pairs one sentence with what appears on screen, so the picture never drifts from the voice.
+
+6
+00:00:40,500 --> 00:00:47,667
+Inside the tool, the spec passes four parts: a checker, a voice, a timeline, and a renderer.
+
+7
+00:00:48,667 --> 00:00:53,967
+Follow queue dot JSON through all four, from file to frames.
+
+8
+00:00:54,967 --> 00:01:02,167
+The checker blocks broken specs, and warns when a video gets too dense, wordy, or low level.
+
+9
+00:01:03,167 --> 00:01:11,833
+The voice is Kokoro, a free local speech model. Each sentence is cached, so edits re-voice only changes.
+
+10
+00:01:12,833 --> 00:01:19,400
+The timeline turns seconds into frames. Each beat lasts its sentence, plus a breath.
+
+11
+00:01:20,400 --> 00:01:27,867
+The renderer draws every frame with React, using Remotion, and writes the video with subtitles.
+
+12
+00:01:28,833 --> 00:01:35,667
+A render takes as long as the video plays. What if the agent needs five layout fixes?
+
+13
+00:01:40,667 --> 00:01:47,967
+It never renders to check. The still command draws every beat into one image in five seconds.
+
+14
+00:01:48,967 --> 00:01:54,233
+Only when the sheet looks right does it render, once, in the background.
+
+15
+00:01:55,233 --> 00:02:03,000
+Maya can also play with the queue. A playground app reuses the same board: press events, click parts.
+
+16
+00:02:04,000 --> 00:02:11,200
+The player is built once. Each new playground is only data, ready in about twenty seconds.
+
+17
+00:02:12,200 --> 00:02:18,467
+In the repo: the tool lives in source, the rules in the skill, the player in play.
+
+18
+00:02:19,467 --> 00:02:26,667
+One ask, one spec, one video. New here? Start with the agents guide and the examples.

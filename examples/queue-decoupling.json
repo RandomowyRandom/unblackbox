@@ -1,0 +1,105 @@
+{
+  "title": "Why put a queue between checkout and email",
+  "audience": "intermediate",
+  "sources": ["illustrative example, not a real codebase"],
+  "beats": [
+    {
+      "say": "Ana buys two mugs. Checkout emails the receipt, then waits for the mail server.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "customer", "icon": "user", "label": "Ana", "at": [2, 4.5] },
+        { "op": "add", "type": "box", "id": "checkout", "label": "Checkout", "icon": "shopping-cart", "at": [7, 4.5], "wait": 0.6 },
+        { "op": "add", "type": "box", "id": "smtp", "label": "Mail server", "icon": "mail", "at": [13, 4.5], "wait": 1.2 },
+        { "op": "add", "type": "arrow", "id": "pay", "from": "customer", "to": "checkout", "label": "pay", "wait": 1.8 },
+        { "op": "add", "type": "arrow", "id": "send", "from": "checkout", "to": "smtp", "label": "receipt", "wait": 2.2 },
+        { "op": "trace", "ids": ["pay", "send"], "label": "order 1042", "icon": "receipt", "wait": 3 }
+      ]
+    },
+    {
+      "say": "Mail is slow today, so Ana stares at the pay button for three seconds.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "slow", "icon": "hourglass", "label": "3 s", "color": "bad", "at": [10, 6.6] },
+        { "op": "focus", "id": ["customer", "pay", "checkout", "send", "smtp", "slow"], "wait": 0.4 }
+      ]
+    },
+    {
+      "say": "The fix is to stop waiting. Checkout drops each order into a queue.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "icon", "id": "customer2", "icon": "user", "label": "Ana", "at": [1.3, 4.5], "wait": 0.3 },
+        { "op": "add", "type": "box", "id": "checkout2", "label": "Checkout", "icon": "shopping-cart", "w": 2.6, "at": [4.4, 4.5], "wait": 0.3 },
+        { "op": "add", "type": "cells", "id": "queue", "items": ["", "", "", ""], "label": "Queue", "at": [8, 4.5], "wait": 1.2 },
+        { "op": "add", "type": "arrow", "id": "pay2", "from": "customer2", "to": "checkout2", "label": "pay", "wait": 0.3 },
+        { "op": "add", "type": "arrow", "id": "enqueue", "from": "checkout2", "to": "queue", "label": "order", "wait": 1.8 }
+      ]
+    },
+    {
+      "say": "Ana's order lands in the queue, and checkout answers right away.",
+      "do": [
+        { "op": "trace", "ids": ["pay2", "enqueue"], "label": "order 1042", "icon": "receipt", "wait": 0.3 },
+        { "op": "fill", "id": "queue", "items": ["1042", "", "", ""], "highlight": [0], "wait": 2.3 },
+        { "op": "add", "type": "icon", "id": "fast", "icon": "zap", "label": "instant", "color": "good", "at": [2.8, 6.4], "wait": 2.6 }
+      ]
+    },
+    {
+      "say": "A worker picks the order up on its own time and emails Ana the receipt.",
+      "do": [
+        { "op": "remove", "id": "fast" },
+        { "op": "add", "type": "box", "id": "worker", "label": "Email worker", "icon": "cog", "w": 2.6, "at": [11.6, 4.5] },
+        { "op": "add", "type": "icon", "id": "smtp2", "icon": "mail", "label": "Mail", "at": [14.8, 4.5], "wait": 0.4 },
+        { "op": "add", "type": "arrow", "id": "deliver", "from": "queue", "to": "worker", "label": "next", "wait": 0.8 },
+        { "op": "add", "type": "arrow", "id": "send2", "from": "worker", "to": "smtp2", "label": "send", "wait": 1.0 },
+        { "op": "fill", "id": "queue", "items": ["1042", "", "", ""], "wait": 1.6 },
+        { "op": "trace", "ids": ["deliver", "send2"], "label": "order 1042", "icon": "receipt", "wait": 2 },
+        { "op": "fill", "id": "queue", "items": ["", "", "", ""], "wait": 4 }
+      ]
+    },
+    {
+      "say": "Rewind. This time the worker crashes while sending Ana's receipt. What happens to the order?",
+      "think": 4,
+      "do": [
+        { "op": "remove", "id": "pay2" },
+        { "op": "remove", "id": "customer2" },
+        { "op": "fill", "id": "queue", "items": ["1042", "", "", ""] },
+        { "op": "trace", "ids": ["deliver"], "label": "order 1042", "icon": "receipt", "wait": 0.6 },
+        { "op": "add", "type": "icon", "id": "crash", "icon": "flame", "label": "crash", "color": "bad", "at": [11.6, 6.2], "wait": 1.6 },
+        { "op": "color", "id": "worker", "color": "bad", "wait": 1.6 }
+      ]
+    },
+    {
+      "say": "Nothing is lost. The order is still in the queue, and goes out when the worker restarts.",
+      "do": [
+        { "op": "fill", "id": "queue", "items": ["1042", "", "", ""], "highlight": [0] },
+        { "op": "remove", "id": "crash", "wait": 1.2 },
+        { "op": "color", "id": "worker", "color": "accent", "wait": 1.2 },
+        { "op": "trace", "ids": ["deliver", "send2"], "label": "order 1042", "icon": "refresh-cw", "wait": 2.6 },
+        { "op": "fill", "id": "queue", "items": ["", "", "", ""], "wait": 4.6 }
+      ]
+    },
+    {
+      "say": "But if it crashed right after sending, Ana gets the receipt twice.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "dup", "icon": "copy", "label": "2 receipts", "color": "bad", "at": [14.8, 6.8], "wait": 0.4 },
+        { "op": "focus", "id": ["worker", "send2", "smtp2", "dup"], "wait": 0.6 }
+      ]
+    },
+    {
+      "say": "So the worker keeps a list of orders it already sent, and skips repeats.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "box", "id": "worker3", "label": "Email worker", "icon": "cog", "at": [4, 4.5], "wait": 0.3 },
+        { "op": "add", "type": "cells", "id": "sent", "items": ["1039", "1040", "1041", "1042"], "highlight": [3], "label": "Already sent", "at": [11.5, 4.5], "wait": 1.0 },
+        { "op": "add", "type": "arrow", "id": "check", "from": "worker3", "to": "sent", "label": "seen it?", "offset": 0.25, "wait": 1.6 },
+        { "op": "add", "type": "arrow", "id": "answer", "from": "sent", "to": "worker3", "label": "yes: skip", "offset": 0.25, "wait": 2.0 },
+        { "op": "trace", "ids": ["check", "answer"], "label": "order 1042", "icon": "receipt", "wait": 2.6 }
+      ]
+    },
+    {
+      "say": "A queue turns slow into later. Just make later safe to happen twice.",
+      "hold": 3,
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "text", "id": "outro", "text": "Slow becomes later.\nRetries must be safe.", "size": "h2", "wait": 0.3 }
+      ]
+    }
+  ]
+}

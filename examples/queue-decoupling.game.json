@@ -1,0 +1,59 @@
+{
+  "title": "Queue playground",
+  "audience": "intermediate",
+  "sources": ["illustrative example, not a real codebase"],
+  "scene": [
+    { "op": "add", "type": "icon", "id": "customer", "icon": "user", "label": "Customer", "at": [1.3, 4.5] },
+    { "op": "add", "type": "box", "id": "checkout", "label": "Checkout", "icon": "shopping-cart", "w": 2.6, "at": [4.4, 4.5] },
+    { "op": "add", "type": "cells", "id": "queue", "items": ["", "", "", ""], "label": "Queue", "at": [8, 4.5] },
+    { "op": "add", "type": "box", "id": "worker", "label": "Email worker", "icon": "cog", "w": 2.6, "at": [11.6, 4.5] },
+    { "op": "add", "type": "icon", "id": "mail", "icon": "mail", "label": "Mail", "at": [14.8, 4.5] },
+    { "op": "add", "type": "arrow", "id": "pay", "from": "customer", "to": "checkout", "label": "pay" },
+    { "op": "add", "type": "arrow", "id": "enqueue", "from": "checkout", "to": "queue", "label": "order" },
+    { "op": "add", "type": "arrow", "id": "deliver", "from": "queue", "to": "worker", "label": "next" },
+    { "op": "add", "type": "arrow", "id": "send", "from": "worker", "to": "mail", "label": "send" }
+  ],
+  "intro": { "say": "This is the checkout from the video. Press a button to make something happen, or click any part." },
+  "events": [
+    {
+      "id": "order", "label": "Place order", "icon": "receipt",
+      "outcomes": [
+        { "if": { "worker": "bad" }, "say": "Checkout answers right away. The order waits in the queue until the worker is back.",
+          "do": [{ "op": "trace", "ids": ["pay", "enqueue"], "label": "order", "icon": "receipt" }] },
+        { "if": { "mail": "bad" }, "say": "Mail is slow, but only the worker waits for it. Checkout already answered.",
+          "do": [{ "op": "trace", "ids": ["pay", "enqueue", "deliver", "send"], "label": "order", "icon": "receipt" }] },
+        { "say": "Checkout answers right away. The worker sends the receipt on its own time.",
+          "do": [{ "op": "trace", "ids": ["pay", "enqueue", "deliver", "send"], "label": "order", "icon": "receipt" }] }
+      ]
+    },
+    {
+      "id": "crash", "label": "Crash worker", "icon": "flame",
+      "outcomes": [
+        { "if": { "worker": "bad" }, "say": "The worker is already down. Try placing an order now." },
+        { "say": "The worker crashed. Customers can still place orders. Try it.", "do": [{ "op": "color", "id": "worker", "color": "bad" }] }
+      ]
+    },
+    {
+      "id": "restart", "label": "Restart worker", "icon": "refresh-cw",
+      "outcomes": [
+        { "if": { "worker": "bad" }, "say": "The worker is back and sends every order that waited. Nothing was lost.",
+          "do": [{ "op": "color", "id": "worker", "color": "accent" }, { "op": "trace", "ids": ["deliver", "send"], "label": "backlog", "icon": "inbox", "wait": 0.6 }] },
+        { "say": "The worker is already running." }
+      ]
+    },
+    {
+      "id": "slow", "label": "Slow mail", "icon": "hourglass",
+      "outcomes": [
+        { "if": { "mail": "bad" }, "say": "Mail is fast again.", "do": [{ "op": "color", "id": "mail", "color": "accent" }] },
+        { "say": "Mail is now slow. Place an order and watch checkout.", "do": [{ "op": "color", "id": "mail", "color": "bad" }] }
+      ]
+    }
+  ],
+  "inspect": {
+    "customer": { "say": "The customer only waits for checkout, never for email.", "do": [{ "op": "focus", "id": ["customer", "pay", "checkout"] }, { "op": "unfocus", "wait": 2.5 }] },
+    "checkout": { "say": "Checkout takes payment and drops the order in the queue. Then it is done.", "do": [{ "op": "focus", "id": ["checkout", "enqueue", "queue"] }, { "op": "unfocus", "wait": 2.5 }] },
+    "queue": { "say": "The queue holds orders until the worker is ready. Nothing waiting here is lost.", "do": [{ "op": "focus", "id": "queue" }, { "op": "unfocus", "wait": 2.5 }] },
+    "worker": { "say": "The worker takes one order at a time and sends its receipt.", "do": [{ "op": "focus", "id": ["queue", "deliver", "worker", "send"] }, { "op": "unfocus", "wait": 2.5 }] },
+    "mail": { "say": "The mail server can be slow. Only the worker ever waits for it.", "do": [{ "op": "focus", "id": ["worker", "send", "mail"] }, { "op": "unfocus", "wait": 2.5 }] }
+  }
+}

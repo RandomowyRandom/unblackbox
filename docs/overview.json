@@ -1,0 +1,180 @@
+{
+  "title": "unblackbox in two minutes",
+  "audience": "intermediate",
+  "sources": [
+    "package.json (agent-driven CLI: JSON spec to narrated explainer video)",
+    ".claude/skills/unblackbox/SKILL.md (map, write spec, validate + still, render; playground on request)",
+    ".claude/skills/unblackbox/references/rules.md (video rules from learning research)",
+    "AGENTS.md (validate under 1 s, still about 5 s, render about as long as the video, game about 20 s)",
+    "src/spec.ts (schema, order checks, lint: errors block, warnings advise)",
+    "src/tts.ts (Kokoro local speech, cache per sentence, provider seam)",
+    "src/timeline.ts (pure: speech seconds to frames; beat = speech + quiet, at least its hold)",
+    "src/video/ (Remotion + React renderer), src/cli.ts render (mp4 + srt)",
+    "src/game.ts, play/ (prebuilt Tauri player loads a data folder)",
+    "Maya and the checkout queue ask are an illustrative example"
+  ],
+  "beats": [
+    {
+      "say": "Maya just joined the team, and asks the agent to explain the checkout queue as a video.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "maya", "icon": "user", "label": "Maya", "size": "l", "at": [3, 4.5] },
+        { "op": "add", "type": "icon", "id": "agent", "icon": "bot", "label": "Agent", "size": "l", "at": [8, 4.5], "wait": 0.8 },
+        { "op": "add", "type": "arrow", "id": "ask", "from": "maya", "to": "agent", "label": "explain the queue", "wait": 1.4 },
+        { "op": "trace", "ids": ["ask"], "label": "Maya's ask", "icon": "message-square", "wait": 2.2 }
+      ]
+    },
+    {
+      "say": "Unblackbox turns that ask into a narrated video. Let's follow it from question to finished file.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "video", "icon": "film", "label": "queue.mp4", "size": "l", "at": [13, 4.5], "color": "good" },
+        { "op": "add", "type": "arrow", "id": "make", "from": "agent", "to": "video", "label": "unblackbox", "wait": 0.8 }
+      ]
+    },
+    {
+      "say": "First, the agent reads the skill: rules for videos people actually understand, taken from learning research.",
+      "do": [
+        { "op": "remove", "id": "make" },
+        { "op": "remove", "id": "video" },
+        { "op": "add", "type": "box", "id": "skill", "label": "Skill: video rules", "icon": "book-open", "at": [8, 1.6], "wait": 0.4 },
+        { "op": "add", "type": "arrow", "id": "rules", "from": "skill", "to": "agent", "label": "rules", "wait": 1.0 }
+      ]
+    },
+    {
+      "say": "Then it maps the system and writes one JSON spec, a list of beats.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "spec", "icon": "file-braces", "label": "queue.json", "size": "l", "at": [13, 4.5] },
+        { "op": "add", "type": "arrow", "id": "writes", "from": "agent", "to": "spec", "label": "writes", "wait": 0.6 },
+        { "op": "trace", "ids": ["writes"], "label": "queue.json", "icon": "file-braces", "wait": 1.4 }
+      ]
+    },
+    {
+      "say": "A beat pairs one sentence with what appears on screen, so the picture never drifts from the voice.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "code", "id": "beat", "lang": "json", "title": "queue.json, one beat", "at": [8, 4.5], "wait": 0.3,
+          "code": ["{ \"say\": \"Ana buys two mugs.\",", "  \"do\": [{ \"op\": \"add\", \"type\": \"box\",", "           \"id\": \"checkout\", \"icon\": \"shopping-cart\" }] }"] }
+      ]
+    },
+    {
+      "say": "Inside the tool, the spec passes four parts: a checker, a voice, a timeline, and a renderer.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "group", "id": "cli", "label": "unblackbox CLI", "at": [8, 4.5], "w": 15.4, "h": 4.6 },
+        { "op": "add", "type": "box", "id": "check", "label": "Checker", "icon": "list-checks", "w": 2.8, "at": [2.2, 4.5], "wait": 0.4 },
+        { "op": "add", "type": "box", "id": "voice", "label": "Voice", "icon": "mic", "w": 2.8, "at": [6.07, 4.5], "wait": 0.8 },
+        { "op": "add", "type": "box", "id": "time", "label": "Timeline", "icon": "timer", "w": 2.8, "at": [9.93, 4.5], "wait": 1.2 },
+        { "op": "add", "type": "box", "id": "draw", "label": "Renderer", "icon": "film", "w": 2.8, "at": [13.8, 4.5], "wait": 1.6 },
+        { "op": "add", "type": "arrow", "id": "c2v", "from": "check", "to": "voice", "label": "valid", "wait": 2.0 },
+        { "op": "add", "type": "arrow", "id": "v2t", "from": "voice", "to": "time", "label": "seconds", "wait": 2.2 },
+        { "op": "add", "type": "arrow", "id": "t2d", "from": "time", "to": "draw", "label": "frames", "wait": 2.4 }
+      ]
+    },
+    {
+      "say": "Follow queue dot JSON through all four, from file to frames.",
+      "do": [
+        { "op": "trace", "ids": ["c2v", "v2t", "t2d"], "label": "queue.json", "icon": "file-braces", "wait": 0.3 }
+      ]
+    },
+    {
+      "say": "The checker blocks broken specs, and warns when a video gets too dense, wordy, or low level.",
+      "do": [
+        { "op": "focus", "id": "check" },
+        { "op": "add", "type": "icon", "id": "warn", "icon": "triangle-alert", "label": "2 warnings", "color": "bad", "at": [2.2, 7.6], "wait": 1.0 }
+      ]
+    },
+    {
+      "say": "The voice is Kokoro, a free local speech model. Each sentence is cached, so edits re-voice only changes.",
+      "do": [
+        { "op": "remove", "id": "warn" },
+        { "op": "focus", "id": "voice" },
+        { "op": "add", "type": "cells", "id": "cache", "items": ["hit", "hit", "new", "hit"], "highlight": [2], "label": "sentence cache", "at": [6.07, 7.7], "wait": 1.0 }
+      ]
+    },
+    {
+      "say": "The timeline turns seconds into frames. Each beat lasts its sentence, plus a breath.",
+      "do": [
+        { "op": "remove", "id": "cache" },
+        { "op": "focus", "id": "time" },
+        { "op": "add", "type": "cells", "id": "secs", "items": ["4.1", "3.2", "5.0", "2.8"], "label": "seconds per beat", "at": [9.93, 7.7], "wait": 1.0 }
+      ]
+    },
+    {
+      "say": "The renderer draws every frame with React, using Remotion, and writes the video with subtitles.",
+      "do": [
+        { "op": "remove", "id": "secs" },
+        { "op": "focus", "id": "draw" },
+        { "op": "add", "type": "icon", "id": "mp4", "icon": "film", "label": "queue.mp4 + srt", "color": "good", "at": [13.8, 7.6], "wait": 1.0 }
+      ]
+    },
+    {
+      "say": "A render takes as long as the video plays. What if the agent needs five layout fixes?",
+      "think": 4,
+      "do": [
+        { "op": "unfocus" },
+        { "op": "remove", "id": "mp4" },
+        { "op": "add", "type": "icon", "id": "slow", "icon": "hourglass", "label": "5 × 2 min", "color": "bad", "at": [13.8, 1.1], "wait": 0.6 },
+        { "op": "color", "id": "draw", "color": "bad", "wait": 0.6 }
+      ]
+    },
+    {
+      "say": "It never renders to check. The still command draws every beat into one image in five seconds.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "icon", "id": "agent2", "icon": "bot", "label": "Agent", "size": "l", "at": [8, 1.8], "wait": 0.3 },
+        { "op": "add", "type": "icon", "id": "spec2", "icon": "file-braces", "label": "queue.json", "size": "l", "at": [3.6, 6.4], "wait": 0.6 },
+        { "op": "add", "type": "icon", "id": "sheet", "icon": "layout-grid", "label": "sheet.png", "size": "l", "at": [12.4, 6.4], "color": "good", "wait": 0.9 },
+        { "op": "add", "type": "arrow", "id": "still", "from": "spec2", "to": "sheet", "label": "still: 5 s", "wait": 1.4 },
+        { "op": "add", "type": "arrow", "id": "looks", "from": "sheet", "to": "agent2", "label": "looks", "wait": 1.7 },
+        { "op": "add", "type": "arrow", "id": "fixes", "from": "agent2", "to": "spec2", "label": "fixes", "wait": 2.0 },
+        { "op": "trace", "ids": ["still", "looks", "fixes"], "label": "queue.json", "icon": "file-braces", "wait": 2.8 }
+      ]
+    },
+    {
+      "say": "Only when the sheet looks right does it render, once, in the background.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "mp42", "icon": "film", "label": "queue.mp4", "size": "l", "at": [12.4, 2.8], "color": "good", "wait": 0.3 },
+        { "op": "add", "type": "arrow", "id": "render", "from": "agent2", "to": "mp42", "label": "render once", "wait": 0.8 },
+        { "op": "trace", "ids": ["render"], "label": "queue.mp4", "icon": "film", "wait": 1.4 }
+      ]
+    },
+    {
+      "say": "Maya can also play with the queue. A playground app reuses the same board: press events, click parts.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "group", "id": "app", "label": "Playground, a Tauri app", "at": [10.5, 4.5], "w": 8, "h": 5 },
+        { "op": "add", "type": "icon", "id": "maya2", "icon": "user", "label": "Maya", "size": "l", "at": [2.4, 4.5], "wait": 0.3 },
+        { "op": "add", "type": "box", "id": "player", "label": "Player", "icon": "gamepad-2", "w": 2.8, "at": [8.6, 4.5], "wait": 0.6 },
+        { "op": "add", "type": "icon", "id": "data", "icon": "folder", "label": "game data", "at": [12.8, 4.5], "wait": 0.9 },
+        { "op": "add", "type": "arrow", "id": "press", "from": "maya2", "to": "player", "label": "crash worker", "wait": 1.4 },
+        { "op": "add", "type": "arrow", "id": "load", "from": "data", "to": "player", "label": "board, voice", "wait": 1.7 },
+        { "op": "trace", "ids": ["press"], "label": "Maya's click", "icon": "mouse-pointer-click", "wait": 2.4 }
+      ]
+    },
+    {
+      "say": "The player is built once. Each new playground is only data, ready in about twenty seconds.",
+      "do": [
+        { "op": "add", "type": "icon", "id": "fast", "icon": "timer", "label": "20 s", "color": "good", "at": [12.8, 6.4], "wait": 0.4 },
+        { "op": "focus", "id": ["data", "fast", "load"], "wait": 0.8 }
+      ]
+    },
+    {
+      "say": "In the repo: the tool lives in source, the rules in the skill, the player in play.",
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "icon", "id": "f1", "icon": "folder-open", "label": "src/", "size": "l", "at": [2.4, 4.5], "wait": 0.3 },
+        { "op": "add", "type": "icon", "id": "f2", "icon": "book-open", "label": ".claude/skills/", "size": "l", "at": [6.13, 4.5], "wait": 0.8 },
+        { "op": "add", "type": "icon", "id": "f3", "icon": "gamepad-2", "label": "play/", "size": "l", "at": [9.87, 4.5], "wait": 1.3 },
+        { "op": "add", "type": "icon", "id": "f4", "icon": "file-braces", "label": "examples/", "size": "l", "at": [13.6, 4.5], "wait": 1.8 }
+      ]
+    },
+    {
+      "say": "One ask, one spec, one video. New here? Start with the agents guide and the examples.",
+      "hold": 3,
+      "do": [
+        { "op": "clear" },
+        { "op": "add", "type": "text", "id": "outro", "text": "One ask → one spec → one video", "size": "h2", "at": [8, 3.9], "wait": 0.3 },
+        { "op": "add", "type": "text", "id": "next", "text": "AGENTS.md · examples/", "size": "body", "color": "muted", "at": [8, 5.4], "wait": 1.2 }
+      ]
+    }
+  ]
+}

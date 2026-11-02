@@ -1,0 +1,40 @@
+{
+  "name": "unblackbox",
+  "version": "0.1.0",
+  "description": "Agent-driven CLI that turns a JSON spec into a clean, narrated explainer video",
+  "type": "module",
+  "bin": {
+    "unblackbox": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc",
+    "play:build": "vite build play && tauri build --no-bundle"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/google-fonts": "4.0.539",
+    "@remotion/player": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "@tauri-apps/api": "2.12.4",
+    "codehike": "1.1.0",
+    "kokoro-js": "1.2.1",
+    "lucide-react": "1.66.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.539",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
