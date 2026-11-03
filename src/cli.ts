@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
 import { access, copyFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -132,7 +133,10 @@ async function prepare(spec: Spec): Promise<Timeline> {
 async function serve() {
   await mkdir(cacheDir, { recursive: true });
   log("bundling...");
-  return bundle({ entryPoint: path.join(root, "video", "index.tsx"), publicDir: cacheDir });
+  const dir = await bundle({ entryPoint: path.join(root, "video", "index.tsx"), publicDir: cacheDir });
+  // every bundle copies the whole voice cache into the OS temp folder; without this, gigabytes pile up
+  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 // Everything renderStill/renderMedia need for one composition of the bundle.
