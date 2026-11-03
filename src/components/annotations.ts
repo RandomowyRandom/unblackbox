@@ -6,8 +6,7 @@ const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const cap = (what: string, s: string, n: number) => (words(s) > n ? [`${what} is ${words(s)} words; keep it to ${n}`] : []);
 const Side = z.enum(["left", "right", "above", "below"]);
 const End = z.union([Ref, Pos]).describe("element id, id.part, or [x, y]");
-// on-screen words must say something: blank text draws an empty frame
-const Text = Label.refine((s) => s.trim().length > 0, "write some text; it cannot be blank");
+const Text = Label; // Label already rejects blank text
 // two fixed points must spread along the brace (vertically for side left/right), or there is no span to brace
 const across = (side?: string) => (side === "left" || side === "right" ? 1 : 0);
 const flat = (a: unknown, b: unknown, side?: string) =>

@@ -7,7 +7,7 @@ import { Color, defineComponent, Icon, Label, PartId, uniqueIds, type Pt, type R
 
 const Value = z.number().min(0).max(1e12);
 // A direct label is the only key to what it marks, so it may not be empty.
-const Name = (max: number) => Label.min(1).max(max);
+const Name = (max: number) => Label.max(max);
 const CH = 0.13; // grid units per character of 0.24-unit text, to size label columns
 const longest = (names: string[]) => Math.max(0, ...names.map((n) => n.length));
 // Direct labels are the only key, so two equal ones make the chart unreadable.

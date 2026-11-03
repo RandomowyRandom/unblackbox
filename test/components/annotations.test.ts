@@ -61,11 +61,11 @@ test("only a badge has state, and its set is validated", () => {
 });
 
 test("blank text is an error on the field, on add and on set", () => {
-  assert.deepEqual(issues(spec("callout", { text: "  " })), [{ path: "beats.0.do.1.text", message: "write some text; it cannot be blank" }]);
+  assert.deepEqual(issues(spec("callout", { text: "  " })), [{ path: "beats.0.do.1.text", message: "empty text draws nothing; write a few words or leave the field out" }]);
   assert.deepEqual(issues(spec("brace", { label: "" })).map((i) => i.path), ["beats.0.do.1.label"]);
   assert.deepEqual(issues(spec("bubble", { text: "" })).map((i) => i.path), ["beats.0.do.1.text"]);
   assert.deepEqual(issues(spec("badge", {}, { op: "set", id: "a", state: { text: " " } })),
-    [{ path: "beats.0.do.2.state.text", message: "write some text; it cannot be blank" }]);
+    [{ path: "beats.0.do.2.state.text", message: "empty text draws nothing; write a few words or leave the field out" }]);
 });
 
 test("a brace between two points needs them spread along its side", () => {

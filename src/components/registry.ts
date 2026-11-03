@@ -19,7 +19,7 @@ export const Wait = z.number().min(0).optional().describe("seconds after beat st
 export const Icon = z.string().refine((n) => Boolean(iconFor(n)), "unknown icon; use a lucide.dev name such as database, server, user, bot, cloud, file-code")
   .describe("lucide.dev icon name in kebab-case, e.g. database, server, user, bot, cloud, gamepad-2, hard-drive, file-code");
 // Short on-screen text; components cap their own counts, lint caps the words.
-export const Label = z.string().max(60);
+export const Label = z.string().max(60).regex(/\S/, "empty text draws nothing; write a few words or leave the field out");
 
 export const SIZE = { s: 0.8, m: 1, l: 1.25 } as const;
 export const Size = z.enum(["s", "m", "l"]).describe("scales the element and its footprint: 0.8 / 1 / 1.25");
@@ -102,4 +102,4 @@ export const colRects = (n: number, step: number, w = step, h = step, x = 0): Re
   Array.from({ length: n }, (_, i) => ({ x, y: (i - (n - 1) / 2) * step, w, h }));
 // Ids inside one component must be unique; returns the errors.
 export const uniqueIds = (what: string, ids: string[]) =>
-  ids.filter((id, i) => ids.indexOf(id) !== i).map((id) => `${what} id '${id}' used twice`);
+  [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))].map((id) => `${what} id '${id}' used twice`);

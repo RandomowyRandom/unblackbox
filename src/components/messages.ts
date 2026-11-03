@@ -12,7 +12,7 @@ const wide = (w: number) => (w > 10 ? [`${w.toFixed(1)} units wide; shorten the 
 const fits = (w: number) => (w > GRID.w ? [`${w.toFixed(1)} units wide, wider than the ${GRID.w}-unit canvas; shorten the text`] : []);
 // Lines drawn as preformatted text: a line break or tab would spill out of its row.
 const OneLine = (max: number) => z.string().max(max).regex(/^[^\n\r\t]*$/, "one line: no line breaks or tabs; use another line instead");
-const Title = Label.min(1);
+const Title = Label;
 // A card is a title row and then one ROW per line; parts and rows share this.
 const cardH = (n: number) => HEAD + n * ROW + PAD;
 const rowY = (h: number, i: number) => -h / 2 + HEAD + (i + 0.5) * ROW;

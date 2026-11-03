@@ -56,7 +56,7 @@ export const core = [
       label: Label.optional().describe("caption under the row"),
     },
     state: ["items", "highlight"],
-    size: (el) => [el.items.length * 0.8, 0.8 + (el.label ? CAPTION : 0)],
+    size: (el) => [Math.max(el.items.length * 0.8, el.label ? el.label.length * 0.15 + 0.2 : 0), 0.8 + (el.label ? CAPTION : 0)],
     parts: (el) => Object.fromEntries(rowRects(el.items.length, 0.8, 0.74, 0.74, -(el.label ? CAPTION : 0) / 2).map((r, i) => [String(i), r])),
     check: (el) => inRange("cells", el.items.length, el.highlight),
     example: { add: { items: ["1041", "1042", "", ""], label: "Queue" }, set: { items: ["1042", "", "", ""], highlight: [0] } },

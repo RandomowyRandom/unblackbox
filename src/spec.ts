@@ -184,7 +184,7 @@ export function checkSemantics(spec: Spec): Issue[] {
       if (holder) return fail(`'${a.id}' is still used by ${holder.type} '${holder.id}'; remove that first`);
       return live.delete(a.id);
     }
-    if (a.op === "move" && !def.placed) return fail(`a ${el.type} follows what it attaches to; move that instead`);
+    if (a.op === "move" && !def.placed) return fail(refsOf(el).length ? `a ${el.type} follows what it attaches to; move that instead` : `a ${el.type} is drawn from its own points; remove it and add a new one`);
     if (a.op === "color" && el.type === "code") return fail("code takes its colors from syntax highlighting; focus lines instead");
     if (a.op === "pulse" && !sizeOf(el)[0]) return fail(`a ${el.type} has no outline to pulse; pulse what it attaches to`);
     if (a.op === "morph") {
@@ -327,7 +327,9 @@ export function lint(spec: Spec, totalSec: number, maxOnScreen: number = AUDIENC
         const el = { ...p.el, ...a.state } as Add;
         placed.set(a.id, { ...p, el });
         shown.push(...textsOf(a.state));
-        for (const message of defOf(el.type).lint?.(el) ?? []) warn(message);
+        // only what this change brings; the add already reported the rest
+        const before = new Set(defOf(el.type).lint?.(p.el) ?? []);
+        for (const message of defOf(el.type).lint?.(el) ?? []) if (!before.has(message)) warn(message);
       }
       if (a.op === "morph" || (a.op === "add" && a.type === "code")) {
         showsCode = true;
