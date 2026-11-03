@@ -4,6 +4,7 @@
   "sources": ["illustrative example, not a real codebase"],
   "beats": [
     {
+      "chapter": "The problem",
       "say": "Ana buys two mugs. Checkout emails the receipt, then waits for the mail server.",
       "do": [
         { "op": "add", "type": "icon", "id": "customer", "icon": "user", "label": "Ana", "at": [2, 4.5] },
@@ -17,11 +18,14 @@
     {
       "say": "Mail is slow today, so Ana stares at the pay button for three seconds.",
       "do": [
-        { "op": "add", "type": "icon", "id": "slow", "icon": "hourglass", "label": "3 s", "color": "bad", "at": [10, 6.6] },
+        { "op": "add", "type": "timer", "id": "slow", "total": 3, "label": "Ana waits", "at": [10, 6.7] },
+        { "op": "set", "id": "slow", "state": { "remaining": 0 }, "wait": 0.8 },
         { "op": "focus", "id": ["customer", "pay", "checkout", "send", "smtp", "slow"], "wait": 0.4 }
       ]
     },
     {
+      "chapter": "The fix",
+      "transition": "slide",
       "say": "The fix is to stop waiting. Checkout drops each order into a queue.",
       "do": [
         { "op": "clear" },
@@ -54,6 +58,7 @@
       ]
     },
     {
+      "chapter": "Where it breaks",
       "say": "Rewind. This time the worker crashes while sending Ana's receipt. What happens to the order?",
       "think": 4,
       "do": [
@@ -62,7 +67,8 @@
         { "op": "fill", "id": "queue", "items": ["1042", "", "", ""] },
         { "op": "trace", "ids": ["deliver"], "label": "order 1042", "icon": "receipt", "wait": 0.6 },
         { "op": "add", "type": "icon", "id": "crash", "icon": "flame", "label": "crash", "color": "bad", "at": [11.6, 6.2], "wait": 1.6 },
-        { "op": "color", "id": "worker", "color": "bad", "wait": 1.6 }
+        { "op": "color", "id": "worker", "color": "bad", "wait": 1.6 },
+        { "op": "pulse", "id": "worker", "wait": 1.6 }
       ]
     },
     {

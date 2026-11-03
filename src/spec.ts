@@ -110,6 +110,7 @@ export function edgesOf(el: Add): Record<string, Pt[]> {
 export const refsOf = (el: Add) => defOf(el.type).refs?.(el) ?? [];
 export const chunksOf = (el: Add) => defOf(el.type).chunks ?? 1;
 const lineCount = (code: string) => code.split("\n").length;
+const an = (type: string) => `${/^[aeiou]/.test(type) ? "an" : "a"} ${type}`;
 const some = (keys: string[]) => (keys.length ? `: ${keys.slice(0, 8).join(", ")}${keys.length > 8 ? ", ..." : ""}` : "; it has none");
 
 // Checks zod cannot express: ids live in order, types match ops, refs and parts exist, state changes stay valid.
@@ -123,7 +124,7 @@ export function checkSemantics(spec: Spec): Issue[] {
     const el = live.get(id);
     if (!el) return `'${id}' is not on screen at this point`;
     if (part !== undefined) return part in partsOf(el) ? null : `'${id}' has no part '${part}'${some(Object.keys(partsOf(el)))}`;
-    return sizeOf(el)[0] ? null : `'${id}' is a ${el.type}, which nothing can attach to`;
+    return sizeOf(el)[0] ? null : `'${id}' is ${an(el.type)}, which nothing can attach to`;
   };
   const holderOf = (id: string) => [...live.values()].find((e) => e.id !== id && refsOf(e).some((r) => r.split(".")[0] === id));
   // after a state change, refs into this element must still find their part
@@ -184,9 +185,9 @@ export function checkSemantics(spec: Spec): Issue[] {
       if (holder) return fail(`'${a.id}' is still used by ${holder.type} '${holder.id}'; remove that first`);
       return live.delete(a.id);
     }
-    if (a.op === "move" && !def.placed) return fail(refsOf(el).length ? `a ${el.type} follows what it attaches to; move that instead` : `a ${el.type} is drawn from its own points; remove it and add a new one`);
+    if (a.op === "move" && !def.placed) return fail(refsOf(el).length ? `${an(el.type)} follows what it attaches to; move that instead` : `${an(el.type)} is drawn from its own points; remove it and add a new one`);
     if (a.op === "color" && el.type === "code") return fail("code takes its colors from syntax highlighting; focus lines instead");
-    if (a.op === "pulse" && !sizeOf(el)[0]) return fail(`a ${el.type} has no outline to pulse; pulse what it attaches to`);
+    if (a.op === "pulse" && !sizeOf(el)[0]) return fail(`${an(el.type)} has no outline to pulse; pulse what it attaches to`);
     if (a.op === "morph") {
       if (el.type !== "code") return fail(`morph needs a code element, '${a.id}' is ${el.type}`);
       live.set(a.id, { ...el, code: a.code });
@@ -194,7 +195,7 @@ export function checkSemantics(spec: Spec): Issue[] {
     if (a.op === "fill" || a.op === "set") {
       if (a.op === "fill" && el.type !== "cells") return fail(`fill needs a cells element, '${a.id}' is ${el.type}`);
       if (a.op === "fill" && el.type === "cells" && a.items.length !== el.items.length) return fail(`fill has ${a.items.length} slots; '${a.id}' has ${el.items.length}`);
-      if (a.op === "set" && !def.state?.length) return fail(`a ${el.type} has no state to set; use color, move or a new element`);
+      if (a.op === "set" && !def.state?.length) return fail(`${an(el.type)} has no state to set; use color, move or a new element`);
       const raw = a.op === "fill" ? { items: a.items, highlight: a.highlight } : a.state;
       const patch = def.setSchema.safeParse(raw);
       if (!patch.success) {

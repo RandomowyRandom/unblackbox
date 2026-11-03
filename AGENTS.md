@@ -72,6 +72,71 @@ Icons are [Lucide](https://lucide.dev/icons) names in kebab-case; an unknown nam
 
 Colors are semantic: `accent`, `muted`, `good`, `bad`. Hex is rejected. `bad` boxes, cells and arrows are dashed so the meaning survives color blindness.
 
+### Components
+
+Each one shows an idea directly; pick by the concept map in the rules. `unblackbox components <type>` prints its exact fields (with what its parts and edges are called), what `set` can change and a worked example; `unblackbox components --sheet --family <f>` shows them. Annotations (`callout`, `brace`, `badge`, `bubble`) attach with `on` or `from`/`to`, follow their target, cost no on-screen slot, and must be removed before it.
+
+| type | shows | `set` changes |
+|---|---|---|
+| **collections** | | |
+| `stack` | a stack, last in first out: a call stack, undo history | items, highlight |
+| `ring` | slots around a circle with named pointers: ring buffer, hash ring | slots, pointers |
+| `table` | database rows under column names: a table, an index lookup | rows, highlight |
+| `kv` | keys mapped to values: a cache, hash map, session store | entries, highlight |
+| `log` | an append-only log with offsets and consumer cursors: WAL, Kafka topic | entries, start, cursors |
+| `grid` | a 2D grid of cells: memory pages, a bitmap, a heatmap | rows, highlight |
+| `bytes` | bytes in a row with named fields: a binary layout, packet header | values, highlight |
+| **graphs** | | |
+| `tree` | a hierarchy: DOM, B-tree, org chart, call tree | nodes, highlight |
+| `graph` | nodes and links: service dependencies, a DAG, a network | highlight, edges |
+| `states` | a state machine or lifecycle; the current state glows | current |
+| `flow` | a flowchart: decision logic or an algorithm, the active step lit | active |
+| `layers` | a stack of layers: OSI, middleware, abstraction levels | highlight |
+| `files` | where code lives: a file tree with folder and file icons | entries, highlight |
+| `commits` | git history: branches, commits, merges and HEAD | commits, head |
+| **time** | | |
+| `timeline` | events on a time axis: a TTL window, ordering, history, with a gliding 'now' | cursor, events |
+| `sequence` | a sequence diagram: who sends what to whom, in order (handshake, request/reply) | shown |
+| `lanes` | work on parallel time lanes: threads, serial vs parallel, race conditions | bars, cursor |
+| `timer` | a countdown ring that drains: a timeout, lease, backoff or TTL | remaining |
+| `cycle` | steps that repeat around a loop: event loop, retry loop, reconcile loop | active |
+| `pipeline` | stages in a row, each with a status: CI, ETL, a middleware chain | stages |
+| **control** | | |
+| `toggle` | a switch with two states: feature flag, circuit breaker, config switch | on |
+| `lock` | a lock and who holds it: mutex, row lock, lease, leader lock | locked, owner |
+| `tokens` | tokens taken and refilled: rate limit, semaphore, connection pool | filled |
+| `gauge` | a dial with a needle and zones: load, CPU, saturation | value |
+| `progress` | a bar filling up: migration, replication catch-up, upload | value |
+| `counter` | a number that changes: retries, version, p99 latency, a count | value |
+| `checklist` | items ticked off: health checks, acceptance criteria, steps done | items |
+| **infra** | | |
+| `store` | where data rests: a database, a disk or an object bucket, with how full it is | fill |
+| `cluster` | replicas of one service: who leads, who is down or behind (replication, failover) | nodes |
+| `shards` | a keyspace split into ranges, each owned by a node (partitioning, sharding) | ranges, highlight |
+| `memory` | an address space: stack, heap, buffers as regions, and what points into them | regions, pointers |
+| `barrier` | a line systems cannot cross freely: network partition, firewall, trust boundary | broken |
+| `device` | what the user sees right now: a phone, laptop or browser screen | lines, button |
+| **messages** | | |
+| `message` | an event, command or email: a card with its kind's icon, a title and key/value fields | fields, highlight |
+| `request` | an HTTP call: method and path, then the status code and latency | status, latency |
+| `token` | a signed token (JWT): colored segments and a seal that breaks when tampered | segments, tampered |
+| `json` | a data shape, payload or config file as pretty-printed JSON | value, highlight |
+| `diff` | a change to a file: kept, removed and added lines | lines |
+| `terminal` | a shell session: commands and their output, new lines type in | lines |
+| `transform` | a function that turns input into output: hash, encrypt, compress, compile | input, output |
+| **charts** | | |
+| `bars` | quantities side by side: latency per region, jobs per worker | bars |
+| `chart` | a value over time: latency, queue depth, a spike past a limit | series |
+| `donut` | shares of a whole: cache hit ratio, traffic split | slices |
+| `compare` | two or three options side by side: before/after, A vs B, a trade-off | columns |
+| `venn` | overlapping sets: shared permissions, common dependencies | items, highlight |
+| `funnel` | stages that filter: requests through auth, rate limit and cache | stages |
+| **annotations** | | |
+| `callout` | a note with a short leader line pointing at one detail | - |
+| `brace` | a curly brace grouping a span of elements: one transaction, a batch | - |
+| `badge` | a small tag on a corner: v2, stale, cached | text |
+| `bubble` | a speech or thought bubble: what an actor says, wants or believes | - |
+
 ## Actions
 
 | op | effect |

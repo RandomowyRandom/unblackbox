@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { DEFS } from "../src/components/index.ts";
 import { gallery } from "../src/gallery.ts";
@@ -108,4 +109,9 @@ test("every component's example is valid and builds a timeline", () => {
   const t = buildTimeline(spec!, silent(spec!.beats.length));
   assert.equal(t.beats.length, DEFS.length);
   for (const d of DEFS) assert.ok(d.summary && d.summary.length <= 90, `${d.type}: one-line summary`);
+});
+
+test("AGENTS.md lists every element type", () => {
+  const guide = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
+  assert.deepEqual(DEFS.map((d) => d.type).filter((t) => !guide.includes(`| \`${t}\` |`)), []);
 });
