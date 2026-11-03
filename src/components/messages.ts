@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineComponent, Icon, Label, PartId, uniqueIds, type Pt, type Rect } from "./registry.ts";
+import { defineComponent, GRID, Icon, Label, PartId, uniqueIds, type Pt, type Rect } from "./registry.ts";
 
 // Shared layout in grid units, used by size, parts and the renderers alike.
 export const CH = 0.15; // width of one mono character at 0.25 units
@@ -7,19 +7,27 @@ export const ROW = 0.4; // one line of a card
 export const HEAD = 0.5; // a card's title row
 export const PAD = 0.2;
 const cols = (xs: string[]) => Math.max(0, ...xs.map((x) => x.length));
-const within = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const wide = (w: number) => (w > 10 ? [`${w.toFixed(1)} units wide; shorten the text so it leaves room for its neighbours`] : []);
+// An error, not advice: wider than the canvas, it cannot be shown whole anywhere.
+const fits = (w: number) => (w > GRID.w ? [`${w.toFixed(1)} units wide, wider than the ${GRID.w}-unit canvas; shorten the text`] : []);
+// Lines drawn as preformatted text: a line break or tab would spill out of its row.
+const OneLine = (max: number) => z.string().max(max).regex(/^[^\n\r\t]*$/, "one line: no line breaks or tabs; use another line instead");
+const Title = Label.min(1);
 // A card is a title row and then one ROW per line; parts and rows share this.
 const cardH = (n: number) => HEAD + n * ROW + PAD;
 const rowY = (h: number, i: number) => -h / 2 + HEAD + (i + 0.5) * ROW;
+// Width a card's title row needs: padding, icon, bold title and an optional uppercase tag of `tag` characters.
+// Bold sans capitals run wider than mono, the spaced-out tag wider still, so both are estimated generously.
+const headW = (title: string, tag = 0) => 2 * PAD + 0.3 + 0.14 + title.length * 0.165 + (tag ? 0.14 + tag * 0.18 : 0);
 
-// message: an envelope, a title row and up to 5 key/value fields
+// message: a card with its kind's icon, a title row and up to 5 key/value fields
 export const KIND_ICON = { event: "zap", email: "mail", command: "send" } as const;
 const Field = z.strictObject({ key: PartId.max(24), value: z.string().max(40) });
-type Msg = { title: string; fields: z.infer<typeof Field>[] };
+type Msg = { kind: keyof typeof KIND_ICON; title: string; fields: z.infer<typeof Field>[] };
+export const msgKeyW = (el: Msg) => Math.max(1, cols(el.fields.map((f) => f.key))) * CH;
 export const messageSize = (el: Msg): [number, number] => {
-  const body = 2 * PAD + 0.2 + cols(el.fields.map((f) => f.key)) * CH + 0.3 + cols(el.fields.map((f) => f.value)) * CH;
-  return [within(Math.max(body, el.title.length * 0.15 + 1.8), 3, 6.5), cardH(el.fields.length)];
+  const body = 2 * PAD + 0.2 + msgKeyW(el) + 0.3 + cols(el.fields.map((f) => f.value)) * CH;
+  return [Math.max(3, body, headW(el.title, el.kind.length)), cardH(el.fields.length)];
 };
 
 // request: method and path above, the status chip and latency below
@@ -47,13 +55,28 @@ export const tokenLayout = (el: Tok) => {
   const w = ws.reduce((a, b) => a + b, 0) + TOKEN.dot * (ws.length - 1) + (el.signed ? TOKEN.seal : 0);
   let left = -w / 2;
   const xs = ws.map((sw) => { const x = left + sw / 2; left += sw + TOKEN.dot; return x; });
-  return { w, h: TOKEN.chip + 0.45, ws, xs, sealX: w / 2 - TOKEN.seal / 2 + 0.05, y: -0.45 / 2 };
+  return { w, h: TOKEN.chip + 0.45, ws, xs, sealX: w / 2 - TOKEN.seal / 2, y: -0.45 / 2 };
 };
 
 // json: one line per scalar, object brace or inline array, laid out like pretty-printed JSON
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
-const JsonValue: z.ZodType<Json> = z.lazy(() =>
-  z.union([z.string().max(40), z.number(), z.boolean(), z.null(), z.array(JsonValue).max(6), z.record(PartId.max(24), JsonValue)]));
+const JsonValue: z.ZodType<Json> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(JsonValue), z.record(z.string(), JsonValue)]));
+// Limits are checked in one walk, so each problem gets its own path and message; inside the union zod only says "Invalid input".
+const JsonObject = z.record(z.string(), JsonValue).superRefine((root, ctx) => {
+  const walk = (v: Json, path: (string | number)[]) => {
+    if (typeof v === "string" && v.length > 40) ctx.addIssue({ code: "custom", path, message: `string of ${v.length} characters; keep it to 40, shorten like f52f…f6c7` });
+    if (Array.isArray(v)) {
+      if (v.length > 6) ctx.addIssue({ code: "custom", path, message: `array of ${v.length} items; show at most 6` });
+      v.forEach((x, i) => walk(x, [...path, i]));
+    } else if (v !== null && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        if (!/^[\w:-]{1,24}$/.test(k)) ctx.addIssue({ code: "custom", path: [...path, k], message: `key '${k}': use up to 24 letters, digits, _, - or : so it works as a part ref` });
+        walk(x, [...path, k]);
+      }
+    }
+  };
+  walk(root, []);
+});
 // `id` matches a line across states; `path` is the dot path it belongs to ("" for the root braces).
 export type JsonLine = { id: string; path: string; depth: number; name?: string; rest: string };
 const scalar = (v: Json) => v === null || typeof v !== "object";
@@ -83,16 +106,18 @@ export const jsonSize = (value: Record<string, Json>): [number, number] => {
 };
 
 // diff: a file name and up to 8 lines, each kept (" "), added ("+") or removed ("-")
-const DiffLine = z.strictObject({ op: z.enum(["+", "-", " "]), text: z.string().max(48) });
-export const diffSize = (lines: { text: string }[]): [number, number] => [Math.max(3, cols(lines.map((l) => l.text)) * CH + 1), cardH(lines.length)];
+const DiffLine = z.strictObject({ op: z.enum(["+", "-", " "]), text: OneLine(48) });
+// the tag counts lines, "+1 −1": at most 5 characters with up to 8 lines
+export const diffSize = (el: { title: string; lines: { text: string }[] }): [number, number] =>
+  [Math.max(3, cols(el.lines.map((l) => l.text)) * CH + 1, headW(el.title, 5)), cardH(el.lines.length)];
 // terminal: a title and up to 8 lines; "$ " starts a command
-export const terminalSize = (lines: string[]): [number, number] => [Math.max(3, cols(lines) * CH + 0.6), cardH(lines.length)];
+export const terminalSize = (el: { title: string; lines: string[] }): [number, number] =>
+  [Math.max(3, cols(el.lines) * CH + 0.6, headW(el.title)), cardH(el.lines.length)];
 
 // transform: input chip > function box > output chip, in one row
-const MAX_CHIP = 3.6;
 type Tf = { input: string; output: string; fn: { label: string } };
 export const transformLayout = (el: Tf) => {
-  const chip = (s: string) => within(s.length * CH + 0.4, 1.2, MAX_CHIP);
+  const chip = (s: string) => Math.max(1.2, s.length * CH + 0.4);
   const [a, b, f, gap] = [chip(el.input), chip(el.output), Math.max(1.6, el.fn.label.length * 0.15 + 0.4), 0.7];
   const w = a + gap + f + gap + b;
   return { w, h: 1.7, a, b, f, chipH: 0.6, x: { input: -w / 2 + a / 2, fn: -w / 2 + a + gap + f / 2, output: w / 2 - b / 2 } };
@@ -100,10 +125,10 @@ export const transformLayout = (el: Tf) => {
 
 export const messages = [
   defineComponent({
-    type: "message", family: "messages", summary: "an event, queue message or email: an envelope with a title and key/value fields",
+    type: "message", family: "messages", summary: "an event, command or email: a card with its kind's icon, a title and key/value fields",
     fields: {
       kind: z.enum(["event", "email", "command"]).describe("event = something happened, command = do this, email = to a person; sets the icon"),
-      title: Label.describe("the message name, e.g. OrderPlaced"),
+      title: Title.describe("the message name, e.g. OrderPlaced"),
       fields: z.array(Field).max(5).describe("headers or body fields, e.g. {key: 'orderId', value: '1042'}; each key is a part (msg.orderId)"),
       highlight: z.array(PartId).max(5).optional().describe("field keys that glow: the one that changed or matters"),
     },
@@ -117,17 +142,21 @@ export const messages = [
       const keys = el.fields.map((f) => f.key);
       return [...uniqueIds("field", keys), ...(el.highlight ?? []).filter((k) => !keys.includes(k)).map((k) => `highlight key '${k}' is not a field: ${keys.join(", ")}`)];
     },
-    lint: (el) => el.fields.filter((f) => f.value.split(/\s+/).length > 5).map((f) => `field '${f.key}' holds a sentence; keep values to a few words`),
+    lint: (el) => [
+      ...el.fields.filter((f) => f.value.split(/\s+/).length > 5).map((f) => `field '${f.key}' holds a sentence; keep values to a few words`),
+      ...wide(messageSize(el)[0]),
+    ],
+    // a redelivered event carries its attempt count: the same order, a second time
     example: {
       add: { kind: "event", title: "OrderPlaced", fields: [{ key: "orderId", value: "1042" }, { key: "customer", value: "Ana" }, { key: "total", value: "EUR 42.50" }] },
-      set: { fields: [{ key: "orderId", value: "1042" }, { key: "customer", value: "Ana" }, { key: "total", value: "EUR 42.50" }, { key: "status", value: "paid" }], highlight: ["status"] },
+      set: { fields: [{ key: "orderId", value: "1042" }, { key: "customer", value: "Ana" }, { key: "total", value: "EUR 42.50" }, { key: "attempt", value: "2" }], highlight: ["attempt"] },
     },
   }),
   defineComponent({
     type: "request", family: "messages", summary: "an HTTP call: method and path, then the status code and latency",
     fields: {
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-      path: z.string().max(40).describe("e.g. /orders/1042/pay"),
+      path: z.string().min(1).max(40).describe("e.g. /orders/1042/pay"),
       status: z.number().int().min(100).max(599).optional().describe("response code; under 400 is good, 400 and up bad; leave out while pending"),
       latency: z.number().min(0).max(600000).optional().describe("milliseconds the call took; counts up when set"),
     },
@@ -158,8 +187,10 @@ export const messages = [
       const t = el.tampered;
       return [
         ...uniqueIds("segment", labels),
+        ...(el.signed && labels.includes("seal") ? ["segment label 'seal' is taken by the seal part of a signed token; rename the segment"] : []),
         ...(t !== undefined && !labels.includes(t) ? [`tampered segment '${t}' is not one of: ${labels.join(", ")}`] : []),
         ...(t !== undefined && !el.signed ? ["tampered needs signed: true; only a signed token shows the change"] : []),
+        ...fits(tokenLayout(el).w),
       ];
     },
     lint: (el) => wide(tokenLayout(el).w),
@@ -171,8 +202,8 @@ export const messages = [
   defineComponent({
     type: "json", family: "messages", summary: "a data shape, payload or config file as pretty-printed JSON",
     fields: {
-      value: z.record(PartId.max(24), JsonValue).describe("a JSON object, at most 3 levels deep and 10 printed lines; top-level keys are parts"),
-      highlight: z.array(z.string().max(60).regex(/^[\w-]+(\.[\w-]+)*$/, "use a dot path like user.id")).max(4).optional()
+      value: JsonObject.describe("a JSON object, at most 3 levels deep and 10 printed lines, strings up to 40 characters, arrays up to 6 items; top-level keys are parts"),
+      highlight: z.array(z.string().max(60).regex(/^[\w:-]+(\.[\w:-]+)*$/, "use a dot path like user.id")).max(4).optional()
         .describe("dot paths whose lines glow, e.g. user.id"),
     },
     state: ["value", "highlight"],
@@ -194,22 +225,25 @@ export const messages = [
         ...(depth > 3 ? [`value is ${depth} levels deep; keep it to 3`] : []),
         ...(lines.length > 10 ? [`value renders ${lines.length} lines; keep it to 10`] : []),
         ...(el.highlight ?? []).filter((h) => !paths.has(h)).map((h) => `highlight '${h}' is not a path in value`),
+        ...fits(jsonSize(el.value)[0]),
       ];
     },
     lint: (el) => wide(jsonSize(el.value)[0]),
+    // SPRING10 takes 10% off: 42.50 becomes 38.25
     example: {
       add: { value: { user: { id: 1042, name: "Ana" }, items: ["mug", "tea"], total: 42.5 } },
-      set: { value: { user: { id: 1042, name: "Ana" }, items: ["mug", "tea"], total: 37.5, coupon: "SPRING10" }, highlight: ["total", "coupon"] },
+      set: { value: { user: { id: 1042, name: "Ana" }, items: ["mug", "tea"], total: 38.25, coupon: "SPRING10" }, highlight: ["total", "coupon"] },
     },
   }),
   defineComponent({
     type: "diff", family: "messages", summary: "a change to a file: kept, removed and added lines",
     fields: {
-      title: Label.describe("the file name, e.g. retry.ts"),
+      title: Title.describe("the file name, e.g. retry.ts"),
       lines: z.array(DiffLine).min(1).max(8).describe("op '+' added, '-' removed, ' ' kept for context"),
     },
     state: ["lines"],
-    size: (el) => diffSize(el.lines),
+    size: diffSize,
+    lint: (el) => wide(diffSize(el)[0]),
     check: (el) => (el.lines.some((l) => l.op !== " ") ? [] : ["a diff needs at least one + or - line"]),
     example: {
       add: { title: "retry.ts", lines: [
@@ -225,11 +259,12 @@ export const messages = [
   defineComponent({
     type: "terminal", family: "messages", summary: "a shell session: commands and their output, new lines type in",
     fields: {
-      title: Label.describe("the shell or host, e.g. api-server"),
-      lines: z.array(z.string().max(56)).max(8).describe("lines starting with '$ ' are commands, the rest is output"),
+      title: Title.describe("the shell or host, e.g. api-server"),
+      lines: z.array(OneLine(56)).max(8).describe("lines starting with '$ ' are commands, the rest is output"),
     },
     state: ["lines"],
-    size: (el) => terminalSize(el.lines),
+    size: terminalSize,
+    lint: (el) => wide(terminalSize(el)[0]),
     check: (el) => el.lines.flatMap((l, i) => (l.trim() === "$" ? [`line ${i + 1} is a bare prompt; write the command after '$ '`] : [])),
     example: {
       add: { title: "api-server", lines: ["$ curl -s localhost:8080/health", "{\"status\":\"ok\"}"] },
@@ -239,9 +274,9 @@ export const messages = [
   defineComponent({
     type: "transform", family: "messages", summary: "a function that turns input into output: hash, encrypt, compress, compile",
     fields: {
-      input: z.string().max(32).describe("what goes in, e.g. hunter2"),
-      fn: z.strictObject({ label: Label.describe("e.g. SHA-256, gzip, JSON.stringify"), icon: Icon }),
-      output: z.string().max(32).describe("what comes out; shorten long values like f52f…a3c1"),
+      input: z.string().min(1).max(32).describe("what goes in, e.g. hunter2"),
+      fn: z.strictObject({ label: Title.describe("e.g. SHA-256, gzip, JSON.stringify"), icon: Icon }),
+      output: z.string().min(1).max(32).describe("what comes out; shorten long values like f52f…f6c7"),
     },
     state: ["input", "output"],
     size: (el) => { const l = transformLayout(el); return [l.w, l.h]; },
@@ -255,11 +290,12 @@ export const messages = [
       const out: Pt[] = [[l.x.fn + l.f / 2, 0], [l.x.output - l.b / 2, 0]];
       return { in: into, out, through: [...into, ...out] };
     },
-    check: (el) => (el.input === el.output ? ["output equals input; a transform changes it"] : []),
-    lint: (el) => [el.input, el.output].filter((s) => s.length * CH + 0.4 > MAX_CHIP).map((s) => `'${s}' is cut off; shorten it like f52f…a3c1`),
+    check: (el) => [...(el.input === el.output ? ["output equals input; a transform changes it"] : []), ...fits(transformLayout(el).w)],
+    lint: (el) => wide(transformLayout(el).w),
+    // the real SHA-256 digests, first and last 4 hex digits: one changed letter, a different hash
     example: {
-      add: { input: "hunter2", fn: { label: "SHA-256", icon: "hash" }, output: "f52f…a3c1" },
-      set: { input: "hunter3", output: "9b1c…07de" },
+      add: { input: "hunter2", fn: { label: "SHA-256", icon: "hash" }, output: "f52f…f6c7" },
+      set: { input: "hunter3", output: "fb8c…a57a" },
     },
   }),
 ] as const;
