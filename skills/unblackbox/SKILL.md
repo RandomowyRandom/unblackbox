@@ -45,4 +45,4 @@ A sandbox app over the same board: buttons trigger events, clicking a component 
 
 1. Write `<topic>.game.json` following the playground part of `unblackbox guide`. Copy the board (the big-picture `add` ops) from the video spec into `scene`. Add 3 to 6 events, at least one of which changes state with a `color` op so that others react to it through `if`, plus an inspect line for each key component.
 2. Run `unblackbox game <topic>.game.json` (about 20 s). Fix the errors and the warnings, and look at `sheet.png` once.
-3. Run `unblackbox play <out folder>` and reply with the folder path: double-click the exe to play, or share the folder.
+3. Run `unblackbox play <out folder>` and reply with the folder path: open the player app in it to play (an .exe on Windows), or share the folder with someone on the same OS.

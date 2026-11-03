@@ -84,7 +84,8 @@ async function load(file: string | undefined, tts: string | undefined): Promise<
 const exists = (p: string) => access(p).then(() => true, () => false);
 const PLAY = path.join(root, "..", "play");
 const BOARD_MAX = 8; // named elements on a playground board
-const PLAYER_EXE = path.join(PLAY, "src-tauri", "target", "release", "unblackbox-play.exe");
+const EXE = process.platform === "win32" ? ".exe" : ""; // the player is a plain binary on macOS and Linux
+const PLAYER_EXE = path.join(PLAY, "src-tauri", "target", "release", `unblackbox-play${EXE}`);
 
 // A playground folder: game.bundle.json + voice + the web build + the player exe. Double-click the exe to play.
 async function buildGame(file: string | undefined, out: string | undefined, tts: string | undefined) {
@@ -108,7 +109,7 @@ async function buildGame(file: string | undefined, out: string | undefined, tts:
   const missing: string[] = [];
   if (await exists(path.join(PLAY, "dist"))) await cp(path.join(PLAY, "dist"), dir, { recursive: true });
   else missing.push("web build");
-  const exe = path.join(dir, `${name}.exe`);
+  const exe = path.join(dir, `${name}${EXE}`);
   if (await exists(PLAYER_EXE)) await copyFile(PLAYER_EXE, exe);
   else missing.push("player exe");
 
@@ -155,7 +156,7 @@ async function main() {
   if (cmd === "game") return print(await buildGame(file, values.out, values.tts));
   if (cmd === "play") {
     const dir = path.resolve(file ?? ".");
-    const exe = (await readdir(dir)).find((f) => f.endsWith(".exe"));
+    const exe = (await readdir(dir, { withFileTypes: true })).find((e) => e.isFile() && path.extname(e.name) === EXE)?.name;
     if (!exe) throw new Error(`no player exe in ${dir}; run \`unblackbox game <topic>.game.json\` first`);
     spawn(path.join(dir, exe), [], { detached: true, stdio: "ignore" }).unref();
     return print({ ok: true, exe: path.join(dir, exe) });

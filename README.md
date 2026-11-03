@@ -161,7 +161,7 @@ A playground is a small desktop app over the video's board: buttons trigger even
 ```bash
 node scripts/setup.mjs --playground                  # once; builds the player, needs Rust
 unblackbox game examples/queue-decoupling.game.json  # ~20 s → out/queue-decoupling-play/
-unblackbox play out/queue-decoupling-play            # or double-click the exe in that folder
+unblackbox play out/queue-decoupling-play            # or open the player app in that folder
 ```
 
 ## Repo map

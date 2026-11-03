@@ -93,7 +93,7 @@ A playground is a small Tauri app where the viewer plays with the system the vid
 | command | what it does |
 |---|---|
 | `unblackbox game topic.game.json` | about 20 s. Validates, voices every line, and writes `out/<topic>-play/`: the player exe, the game data, a web build, and `sheet.png` (the board plus the end state of every line). Prints `{ok, out, exe, sheet, warnings}` with the same kind of paths as `validate` |
-| `unblackbox play out/<topic>-play` | opens it. The folder is the deliverable: double-click the exe, or share the folder |
+| `unblackbox play out/<topic>-play` | opens it. The folder is the deliverable: open the player app in it (an .exe on Windows), or share the folder. A player runs only on the OS it was built on |
 | `unblackbox schema game` | exact JSON Schema of the playground spec |
 
 ```json

@@ -1,6 +1,7 @@
 {
   "name": "unblackbox",
   "version": "0.1.0",
+  "private": true,
   "description": "Agent-driven CLI that turns a JSON spec into a clean, narrated explainer video",
   "license": "MIT",
   "type": "module",
