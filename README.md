@@ -31,7 +31,7 @@ Reading a codebase tells you what each file does. It rarely tells you how the pa
 - **Built on learning research.** About four things on screen at a time, problem before solution, one pause-and-predict question, no walls of text. `validate` checks these rules for you.
 - **Fast.** The agent checks its work on a single contact-sheet image in about 5 seconds and renders only once.
 - **Free voice.** [Kokoro](https://github.com/hexgrad/kokoro) runs locally. Paid providers plug in behind one interface.
-- **Play with it.** On request, the same board becomes an interactive playground app: press "crash worker", watch the queue hold the order.
+- **Play with it.** On request, the same board becomes a live sandbox: drag the order rate, crash the worker, take the queue out, and watch what the system does.
 
 ## How it works
 
@@ -52,7 +52,7 @@ Reading a codebase tells you what each file does. It rarely tells you how the pa
 | Voice | [`src/tts.ts`](src/tts.ts) | Kokoro TTS, cached per sentence so edits only re-voice what changed |
 | Timeline | [`src/timeline.ts`](src/timeline.ts) | pure function: spec + speech seconds → frame numbers for every element |
 | Renderer | [`src/video/`](src/video) | Remotion + React draw each frame; Code Hike for the rare code glimpse |
-| Playground | [`src/game.ts`](src/game.ts), [`play/`](play) | a prebuilt Tauri player that loads a game folder; no Rust compile per game |
+| Playground | [`src/sim.ts`](src/sim.ts), [`src/game.ts`](src/game.ts), [`play/`](play) | a prebuilt Tauri player that loads a game folder; no Rust compile per game |
 
 ## Install
 
@@ -169,10 +169,11 @@ Every command prints JSON to stdout, so agents can read the result.
 
 ## Playground
 
-A playground is a small desktop app over the video's board: buttons trigger events, clicking a component explains it, with the same visuals and voice. Element colors are its state, so a crashed worker changes what the next order does.
+A playground is a small desktop app over the video's board where the system runs: orders flow, queues fill, and the viewer pulls levers, switches faults on and takes parts out. Guided stages and challenges (predict, then fix or break it) end in a free sandbox. The agent describes how each part behaves; `game --check` plays every lever and challenge headless to prove they work.
 
 ```bash
 node scripts/setup.mjs --playground                  # once; builds the player, needs Rust
+unblackbox game examples/queue-decoupling.game.json --check  # seconds: plays it headless, prints a run table
 unblackbox game examples/queue-decoupling.game.json  # ~20 s → out/queue-decoupling-play/
 unblackbox play out/queue-decoupling-play            # or open the player app in that folder
 ```

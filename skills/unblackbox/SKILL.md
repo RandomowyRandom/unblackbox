@@ -44,8 +44,9 @@ Rendering takes about as long as the video plays, so start it in the background.
 
 ## 5. Playground (only if the user says yes)
 
-A sandbox app over the same board: buttons trigger events, clicking a component explains it. It should take about 5 minutes.
+A live sandbox over the same board: the system runs, the viewer pulls levers and breaks things, guided by stages and challenges. It should take about 10 minutes.
 
-1. Write `<topic>.game.json` following the playground part of `unblackbox guide`. Copy the main scene's final picture (its elements as they are at the end of that scene) from the video spec into `scene`. Add 3 to 6 events, at least one of which changes state with a `color` op so that others react to it through `if`, plus an inspect line for each key component.
-2. Run `unblackbox game <topic>.game.json` (about 20 s). Fix the errors and the warnings, and look at `sheet.png` once.
-3. Run `unblackbox play <out folder>` and reply with the folder path: open the player app in it to play (an .exe on Windows), or share the folder with someone on the same OS.
+1. Write `<topic>.game.json` following the playground part of `unblackbox guide`. Copy the main scene's final picture into `scene` and add probe elements. In `sim`, give each runtime part its kind and its numbers from the code (`ack` from how the code acknowledges messages, `awaits` from where it waits on a downstream call, `retry` from its config). Then levers, notes, stages and one challenge per key idea.
+2. Run `unblackbox game <topic>.game.json --check` (a few seconds) and read the run table: does each lever move what it should, does each note fire? Fix every error and warning.
+3. Run `unblackbox game <topic>.game.json` (about 20 s) and look at `sheet.png` once.
+4. Run `unblackbox play <out folder>` and reply with the folder path: open the player app in it to play (an .exe on Windows), or share the folder with someone on the same OS.

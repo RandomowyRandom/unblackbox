@@ -67,8 +67,9 @@ Every abstract idea in the story gets the component that looks like it. A lock i
 
 ## Playground
 
-- The board is the video's main scene (usually the big picture of the system, as its last frame shows it), so the viewer recognizes it at once.
-- 3 to 6 events. Each makes something visibly happen (a packet moves, a part changes color) and says what happened in one sentence.
-- State matters: at least one event changes a part (crash it, slow it down), and other events behave differently because of it (`if`). That is how the player discovers how the system copes.
-- Every key component has an inspect line: what it does, in one sentence.
+- The board is the video's main scene as it ends, plus up to 4 probes, so the viewer recognizes it at once and sees every number that matters.
+- Only systems about flow, load or failure get a playground: queues, workers, retries, overload, crashes, slow dependencies (a rate limit is a worker with `full: refuse`). Caches, git, tokens and consensus cannot be simulated yet; ship the video alone.
+- Describe behaviour, not outcomes: map each part to a kind (what makes work, what stores it, what processes it, where it ends) and take every number from the code, cited in `from`. Ranges go from comfortable to past the tipping point.
+- Guided first, free last: one new lever per stage, each stage with one challenge for one key idea of the video (predict, then fix, and one "break it"), the full sandbox at the end.
+- One note per emergent moment the video promised, keyed to the event (`lost` at the worker), said once. Live numbers stay on probes, never in speech.
 - Same voice rules as the video: under ~16 words per line, labels only on screen.

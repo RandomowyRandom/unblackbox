@@ -40,6 +40,39 @@ export type Timeline = {
 };
 
 const byFrame = (a: { frame: number }, b: { frame: number }) => a.frame - b.frame;
+export const newTrack = (el: Add, frame: number, enter: Transition = "fade"): Track =>
+  ({ el, start: frame, end: null, enter, exit: "fade", moves: [], morphs: [], colors: [], sets: [], pulses: [] });
+
+// Where actions land: the current track per id, and the board-wide event lists.
+export type Board = Pick<Timeline, "focus" | "camera" | "traces"> & { tracks: Map<string, Track> };
+
+// One action at `frame` (its wait already added). `style` is the transition of the beat it belongs to.
+// Shared by videos (buildTimeline) and live playgrounds, which apply lines as the player acts.
+export function applyAction(b: Board, a: Action, frame: number, fps: number, style: Transition = "fade") {
+  const end = (t: Track) => {
+    if (t.end !== null) return;
+    t.end = frame;
+    t.exit = style;
+  };
+  const tr = "id" in a && typeof a.id === "string" ? b.tracks.get(a.id) : undefined;
+  if (a.op === "add") b.tracks.set(a.id, newTrack(a, frame, style));
+  if (a.op === "remove") end(tr!);
+  if (a.op === "move") tr!.moves.push({ frame, to: a.to });
+  if (a.op === "morph") tr!.morphs.push({ frame, code: a.code });
+  if (a.op === "color") tr!.colors.push({ frame, color: a.color });
+  if (a.op === "fill") tr!.sets.push({ frame, state: { items: a.items, highlight: a.highlight ?? [] } }); // fill names the slots that changed now
+  if (a.op === "set") tr!.sets.push({ frame, state: a.state });
+  if (a.op === "pulse") tr!.pulses.push(frame);
+  if (a.op === "focus") b.focus.push({ frame, ids: [a.id].flat(), lines: a.lines ?? null });
+  if (a.op === "unfocus") b.focus.push({ frame, ids: null, lines: null });
+  if (a.op === "trace") b.traces.push({ frame, ids: a.ids, label: a.label, icon: a.icon, step: Math.round((a.speed ?? TRACE_STEP) * fps), color: a.color });
+  if (a.op === "camera") b.camera.push({ frame, to: a.to ?? HOME.to, zoom: a.zoom ?? HOME.zoom });
+  if (a.op === "clear") {
+    for (const t of b.tracks.values()) end(t);
+    b.focus.push({ frame, ids: null, lines: null });
+    b.camera.push({ frame, ...HOME });
+  }
+}
 const busy = (a: Action) => (a.wait ?? 0) + (a.op === "trace" ? a.ids.length * (a.speed ?? TRACE_STEP) : 0) + TIMING.anim;
 
 // Pure: validated spec + per-beat speech durations -> absolute frames for everything.
@@ -47,10 +80,9 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
   const { fps, width, height } = spec.format;
   const { pad } = AUDIENCE[spec.audience];
   const frames = (sec: number) => Math.round(sec * fps);
-  const tracks = new Map<string, Track>();
-  const focus: FocusEvent[] = [];
-  const camera: CameraEvent[] = [];
-  const traces: TraceEvent[] = [];
+  const board: Board = { tracks: new Map(), focus: [], camera: [], traces: [] };
+  const { tracks, focus, camera, traces } = board;
+  const all: Track[] = [];
   const chapters: ChapterEvent[] = [];
   const beats: BeatTiming[] = [];
   let start = 0;
@@ -60,30 +92,9 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
     const { file, sec } = voiced[i];
     const style = beat.transition ?? "fade";
     if (beat.chapter) chapters.push({ frame: start, title: (chapter = beat.chapter) });
-    const end = (t: Track, frame: number) => {
-      if (t.end !== null) return;
-      t.end = frame;
-      t.exit = style;
-    };
     for (const a of beat.do) {
-      const frame = start + frames(a.wait ?? 0);
-      if (a.op === "add") tracks.set(a.id, { el: a, start: frame, end: null, enter: style, exit: "fade", moves: [], morphs: [], colors: [], sets: [], pulses: [] });
-      if (a.op === "remove") end(tracks.get(a.id)!, frame);
-      if (a.op === "move") tracks.get(a.id)!.moves.push({ frame, to: a.to });
-      if (a.op === "morph") tracks.get(a.id)!.morphs.push({ frame, code: a.code });
-      if (a.op === "color") tracks.get(a.id)!.colors.push({ frame, color: a.color });
-      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight ?? [] } }); // fill names the slots that changed now
-      if (a.op === "set") tracks.get(a.id)!.sets.push({ frame, state: a.state });
-      if (a.op === "pulse") tracks.get(a.id)!.pulses.push(frame);
-      if (a.op === "focus") focus.push({ frame, ids: [a.id].flat(), lines: a.lines ?? null });
-      if (a.op === "unfocus") focus.push({ frame, ids: null, lines: null });
-      if (a.op === "trace") traces.push({ frame, ids: a.ids, label: a.label, icon: a.icon, step: frames(a.speed ?? TRACE_STEP), color: a.color });
-      if (a.op === "camera") camera.push({ frame, to: a.to ?? HOME.to, zoom: a.zoom ?? HOME.zoom });
-      if (a.op === "clear") {
-        for (const t of tracks.values()) end(t, frame);
-        focus.push({ frame, ids: null, lines: null });
-        camera.push({ frame, ...HOME });
-      }
+      applyAction(board, a, start + frames(a.wait ?? 0), fps, style);
+      if (a.op === "add") all.push(tracks.get(a.id)!); // an id added again (a playground's sheet) keeps its earlier track
     }
     const think = beat.think ?? 0;
     const settle = Math.max(0, ...beat.do.map(busy));
@@ -92,7 +103,7 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
     start += frames(length);
   });
 
-  for (const t of tracks.values()) {
+  for (const t of all) {
     t.moves.sort(byFrame);
     t.morphs.sort(byFrame);
     t.colors.sort(byFrame);
@@ -100,7 +111,7 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
     t.pulses.sort((a, b) => a - b);
   }
   for (const list of [focus, camera, traces]) list.sort(byFrame);
-  return { fps, width, height, totalFrames: start + frames(TIMING.tail), pal: themeOf(spec.theme), beats, tracks: [...tracks.values()], focus, camera, traces, chapters };
+  return { fps, width, height, totalFrames: start + frames(TIMING.tail), pal: themeOf(spec.theme), beats, tracks: all, focus, camera, traces, chapters };
 }
 
 // Frame where beat i (0-based, like spec paths) has settled: its last frame, or mid-think so the

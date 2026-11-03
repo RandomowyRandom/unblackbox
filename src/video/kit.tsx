@@ -61,7 +61,8 @@ export const posAt = (tr: Track, { t, frame }: Ctx): Pos => {
   const at = "at" in tr.el && tr.el.at ? tr.el.at : HOME.to;
   return [0, 1].map((k) => animate(at[k], tr.moves.map((m) => ({ frame: m.frame, value: m.to[k] })), frame, t.fps)) as Pos;
 };
-export const trackOf = (t: Timeline, id: string) => t.tracks.find((tr) => tr.el.id === id);
+// the newest: a playground may take a part out and put it back while the old one still fades
+export const trackOf = (t: Timeline, id: string) => t.tracks.findLast((tr) => tr.el.id === id);
 
 // Where a ref ("cache", "cache.1042", or [x, y]) is right now, in grid units; w = h = 0 for a bare point.
 export function refRect(ref: string | Pos, ctx: Ctx) {

@@ -11,7 +11,7 @@ import { highlight } from "codehike/code";
 import { z } from "zod";
 import { DEFS, defOf } from "./components/index.ts";
 import { gallery } from "./gallery.ts";
-import { Game, linesOf, parseGame, toGamePaths, walkthrough, type Bundle } from "./game.ts";
+import { Game, linesOf, parseGame, snapshots, toGamePaths, verify, walkthrough, type Bundle } from "./game.ts";
 import { lint, parseSpec, Spec, Theme, type Issue } from "./spec.ts";
 import { CODE_THEME } from "./themes.ts";
 import { buildTimeline, settledFrame, timing, toSrt, type Timeline } from "./timeline.ts";
@@ -29,6 +29,7 @@ const USAGE = `unblackbox <command> [spec.json] [options]
         [--beat B]          only beats B, as one clip from the first to the last (no SRT)
         [--out x.gif]       a silent half-size 15 fps GIF instead, e.g. a README preview of --beat 5,6
   game <topic.game.json>    build a playground folder (voice, player exe, web build, sheet.png)
+        [--check]           only check it: plays every lever, fault and challenge headless on 4 seeds and prints a run table
   play <folder>             open a built playground
   voices [--tts name]       list voices of a TTS provider
   schema game               print the playground JSON Schema
@@ -96,14 +97,21 @@ async function load(file: string | undefined, tts: string | undefined, theme?: s
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 const PLAY = path.join(root, "..", "play");
-const BOARD_MAX = 8; // named elements on a playground board
+const BOARD_MAX = 9; // named elements on a playground board: the sandbox stage shows everything, like an expert scene
 const EXE = process.platform === "win32" ? ".exe" : ""; // the player is a plain binary on macOS and Linux
 const PLAYER_EXE = path.join(PLAY, "src-tauri", "target", "release", `unblackbox-play${EXE}`);
 
 // A playground folder: game.bundle.json + voice + the web build + the player exe. Double-click the exe to play.
-async function buildGame(file: string | undefined, out: string | undefined, tts: string | undefined) {
-  const { game, issues } = parseGame(await readJson(file));
+async function checkGame(file: string | undefined) {
+  const { game, model, issues } = parseGame(await readJson(file));
   if (!game) throw new SpecError(issues);
+  const { errors, warnings, runs } = verify(game, model);
+  if (errors.length) throw Object.assign(new SpecError(errors), { runs });
+  return { game, model, warnings: [...toGamePaths(game, lint(walkthrough(game), 0, BOARD_MAX)), ...warnings], runs };
+}
+
+async function buildGame(file: string | undefined, out: string | undefined, tts: string | undefined) {
+  const { game, model, warnings } = await checkGame(file);
   pickVoice(game, tts);
   const spec = walkthrough(game);
   const voiced = await voiceBeats(spec, cacheDir, log);
@@ -129,10 +137,12 @@ async function buildGame(file: string | undefined, out: string | undefined, tts:
   if (await exists(PLAYER_EXE)) await copyFile(PLAYER_EXE, exe);
   else missing.push("player exe");
 
-  const t = buildTimeline(spec, voiced);
+  // the board at rest, then as the sim leaves it after the defaults run and each challenge
+  const shots = snapshots(game, model);
+  const board = { ...spec, beats: [spec.beats[0], ...shots.map((s) => ({ do: s.ops }))] };
+  const t = buildTimeline(board, board.beats.map(() => ({ file: null, sec: 0 })));
   const sheet = path.join(dir, "sheet.png");
-  await renderStill({ ...(await select(await serve(), "sheet", { t, frames: t.beats.map((_, b) => settledFrame(t, b)), labels: ["board", ...linesOf(game).map((l) => l.key)] })), output: sheet, frame: 0 });
-  const warnings = toGamePaths(game, lint(spec, 0, BOARD_MAX));
+  await renderStill({ ...(await select(await serve(), "sheet", { t, frames: t.beats.map((_, b) => settledFrame(t, b)), labels: ["board", ...shots.map((s) => s.label)] })), output: sheet, frame: 0 });
   if (missing.length) warnings.push({ path: "", message: `${missing.join(" and ")} not built yet: run the unblackbox setup once with playgrounds (\`node scripts/setup.mjs --playground\`, needs Rust)` });
   return { ok: true, out: dir, exe: missing.length ? null : exe, sheet, warnings };
 }
@@ -166,13 +176,17 @@ async function main() {
     allowPositionals: true,
     options: {
       out: { type: "string" }, beat: { type: "string" }, at: { type: "string" }, tts: { type: "string" }, theme: { type: "string" },
-      sheet: { type: "boolean" }, family: { type: "string" }, help: { type: "boolean", short: "h" },
+      sheet: { type: "boolean" }, check: { type: "boolean" }, family: { type: "string" }, help: { type: "boolean", short: "h" },
     },
   });
   const [cmd, file] = positionals;
 
   if (cmd === "guide") return console.log((await Promise.all(GUIDE.map((f) => readFile(f, "utf8")))).join("\n\n"));
   if (cmd === "schema") return print(z.toJSONSchema(file === "game" ? Game : Spec, { io: "input" }));
+  if (cmd === "game" && values.check) {
+    const { warnings, runs } = await checkGame(file);
+    return print({ ok: true, warnings, runs });
+  }
   if (cmd === "game") return print(await buildGame(file, values.out, values.tts));
   if (cmd === "components" && values.sheet) {
     // through parseSpec like any spec, so the gallery also proves every example is valid
@@ -276,6 +290,6 @@ async function main() {
 }
 
 main().catch((e: unknown) => {
-  print(e instanceof SpecError ? { ok: false, errors: e.issues } : { ok: false, error: (e as Error).message });
+  print(e instanceof SpecError ? { ok: false, errors: e.issues, ...("runs" in e ? { runs: e.runs } : {}) } : { ok: false, error: (e as Error).message });
   process.exitCode = 1;
 });
