@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
-import { access, copyFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -120,7 +120,10 @@ async function buildGame(file: string | undefined, out: string | undefined, tts:
   await writeFile(path.join(dir, "game.bundle.json"), JSON.stringify({ game, voices } satisfies Bundle));
 
   const missing: string[] = [];
-  if (await exists(path.join(PLAY, "dist"))) await cp(path.join(PLAY, "dist"), dir, { recursive: true });
+  if (await exists(path.join(PLAY, "dist"))) {
+    await rm(path.join(dir, "assets"), { recursive: true, force: true }); // a rebuild leaves the old bundle behind otherwise
+    await cp(path.join(PLAY, "dist"), dir, { recursive: true });
+  }
   else missing.push("web build");
   const exe = path.join(dir, `${name}${EXE}`);
   if (await exists(PLAYER_EXE)) await copyFile(PLAYER_EXE, exe);
