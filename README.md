@@ -11,8 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/overview.mp4"><img src="docs/overview-preview.gif" alt="unblackbox overview video (click to watch with sound)" width="720"></a><br>
-  <sub>▶ <a href="docs/overview.mp4">Watch the overview with sound</a> (2.5 min, made with unblackbox from <a href="docs/overview.json"><code>docs/overview.json</code></a>)</sub>
+https://github.com/user-attachments/assets/c6c4b0ef-af69-4b54-b192-62066df75484
 </p>
 
 ---
