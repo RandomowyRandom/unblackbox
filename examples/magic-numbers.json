@@ -3,65 +3,59 @@
   "voice": { "provider": "kokoro", "voice": "am_michael", "speed": 1 },
   "beats": [
     {
-      "say": "Let's talk about magic numbers.",
-      "do": [{ "op": "add", "type": "text", "id": "title", "text": "Name your magic numbers", "size": "h1" }]
-    },
-    {
-      "say": "Here's a function that checks if a session has expired.",
+      "chapter": "The problem",
+      "say": "Here is a check for whether a session has expired.",
+      "hold": 7,
       "do": [
-        { "op": "clear" },
-        {
-          "op": "add", "type": "code", "id": "fn", "lang": "ts", "title": "session.ts", "wait": 0.3,
-          "code": "function isExpired(session: Session) {\n  const age = Date.now() - session.createdAt;\n  return age > 86400000;\n}"
-        }
+        { "op": "add", "type": "code", "id": "fn", "lang": "ts", "title": "session.ts", "at": [5.4, 4.5], "wait": 0.3, "code": "function isExpired(session: Session) {\n  const age = Date.now() - session.createdAt;\n  return age > 86400000;\n}" }
       ]
     },
     {
-      "say": "But what is eighty six million, four hundred thousand? You have to stop and do the math.",
-      "do": [{ "op": "focus", "id": "fn", "lines": [[3, 3]] }]
+      "say": "But what is eighty six million, four hundred thousand? How long is that?",
+      "think": 3,
+      "do": [
+        { "op": "focus", "id": "fn", "lines": [[3, 3]] }
+      ]
     },
     {
+      "say": "Say Ana logs in Monday at nine. The number is exactly one day later.",
+      "hold": 9,
+      "do": [
+        { "op": "add", "type": "icon", "id": "login", "icon": "user", "label": "Mon 9:00", "at": [13.2, 2.2] },
+        { "op": "add", "type": "icon", "id": "expired", "icon": "lock", "label": "Tue 9:00", "color": "bad", "at": [13.2, 6.6], "wait": 1.2 },
+        { "op": "add", "type": "arrow", "id": "day", "from": "login", "to": "expired", "label": "one day", "wait": 2.4 },
+        { "op": "trace", "ids": ["day"], "label": "Ana's session", "icon": "clock", "wait": 3.4 }
+      ]
+    },
+    {
+      "chapter": "The fix",
       "say": "Give the number a name, and the code explains itself.",
+      "hold": 6,
       "do": [
         { "op": "unfocus" },
-        {
-          "op": "morph", "id": "fn", "wait": 0.4,
-          "code": "const ONE_DAY_MS = 24 * 60 * 60 * 1000;\n\nfunction isExpired(session: Session) {\n  const age = Date.now() - session.createdAt;\n  return age > ONE_DAY_MS;\n}"
-        }
+        { "op": "morph", "id": "fn", "wait": 0.6, "code": "const ONE_DAY_MS = 24 * 60 * 60 * 1000;\n\nfunction isExpired(session: Session) {\n  const age = Date.now() - session.createdAt;\n  return age > ONE_DAY_MS;\n}" }
       ]
     },
     {
       "say": "The math is still there, but now it reads like a sentence.",
-      "do": [{ "op": "focus", "id": "fn", "lines": [[1, 1], [5, 5]] }]
-    },
-    {
-      "say": "Say Ana logs in Monday at nine. Exactly one day later, the session ends.",
+      "hold": 8,
       "do": [
-        { "op": "unfocus" },
-        { "op": "move", "id": "fn", "to": [5.6, 4.5] },
-        { "op": "add", "type": "icon", "id": "login", "icon": "user", "label": "Mon 9:00", "at": [13.2, 2.2], "wait": 0.6 },
-        { "op": "add", "type": "icon", "id": "expired", "icon": "lock", "label": "Tue 9:00", "color": "bad", "at": [13.2, 6.6], "wait": 1.2 },
-        { "op": "add", "type": "arrow", "id": "day", "from": "login", "to": "expired", "label": "one day", "wait": 1.6 },
-        { "op": "trace", "ids": ["day"], "label": "Ana's session", "icon": "clock", "wait": 2.4 }
+        { "op": "focus", "id": "fn", "lines": [[1, 1], [5, 5]] }
       ]
     },
     {
       "say": "A raw number tells you what. A name tells you why.",
+      "hold": 8,
       "do": [
-        { "op": "remove", "id": "day" },
-        { "op": "remove", "id": "login" },
-        { "op": "remove", "id": "expired" },
-        { "op": "add", "type": "box", "id": "raw", "label": "86400000", "at": [13, 2.8], "color": "bad", "wait": 0.6 },
-        { "op": "add", "type": "box", "id": "named", "label": "ONE_DAY_MS", "at": [13, 6.2], "color": "good", "wait": 1.6 },
-        { "op": "add", "type": "arrow", "id": "rename", "from": "raw", "to": "named", "label": "name it", "wait": 1.8 }
+        { "op": "unfocus" },
+        { "op": "add", "type": "callout", "id": "why", "on": "fn", "text": "the name says why", "side": "above", "wait": 0.6 }
       ]
     },
     {
-      "say": "Names are documentation that can't go stale.",
-      "hold": 2,
+      "say": "Names are documentation that can't go stale. Look for bare numbers in your next review.",
+      "hold": 6,
       "do": [
-        { "op": "clear" },
-        { "op": "add", "type": "text", "id": "outro", "text": "Names are documentation\nthat can't go stale.", "size": "h2", "wait": 0.3 }
+        { "op": "pulse", "id": "fn" }
       ]
     }
   ]

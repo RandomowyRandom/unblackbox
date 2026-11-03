@@ -7,10 +7,13 @@ export { CAPTION, Color, GRID, Icon, ICON_SIZE, iconFor, Id, Pos, Ref };
 
 // Pacing and lint limits per viewer level. `pad` is the quiet after each line so the picture can
 // sink in; novices need more of it and fewer new names at once (working memory holds ~4 chunks).
+// changes = visible changes per beat (add, remove, set, color, move); wpm = spoken words per minute of video;
+// ideas = new things (components, actors, annotations) per minute: one scene that grows slowly, not a stream of new views.
+// maxOnScreen = things in view at once in a scene; parts set to emphasis "quiet" do not count.
 export const AUDIENCE = {
-  novice: { pad: 1.2, maxOnScreen: 4, wordsPerBeat: 16 },
-  intermediate: { pad: 1.0, maxOnScreen: 5, wordsPerBeat: 18 },
-  expert: { pad: 0.7, maxOnScreen: 6, wordsPerBeat: 22 },
+  novice: { pad: 1.8, maxOnScreen: 5, wordsPerBeat: 14, changes: 2, wpm: 80, ideas: 4 },
+  intermediate: { pad: 1.5, maxOnScreen: 7, wordsPerBeat: 16, changes: 3, wpm: 90, ideas: 5 },
+  expert: { pad: 1.1, maxOnScreen: 9, wordsPerBeat: 20, changes: 4, wpm: 110, ideas: 6 },
 } as const;
 export const TRACE_STEP = 1.0; // default seconds the trace packet spends on each arrow
 const MAX_LABEL_WORDS = 5; // labels name things; narration explains them
@@ -75,7 +78,7 @@ export const Spec = z.strictObject({
   voice: z.strictObject({
     provider: z.string().default("kokoro"),
     voice: z.string().default("am_michael"),
-    speed: z.number().min(0.5).max(2).default(0.95),
+    speed: z.number().min(0.5).max(2).default(0.9),
   }).prefault({}),
   format: z.strictObject({
     width: z.number().int().positive().multipleOf(2).default(1920),
@@ -196,7 +199,7 @@ export function checkSemantics(spec: Spec): Issue[] {
       if (a.op === "fill" && el.type !== "cells") return fail(`fill needs a cells element, '${a.id}' is ${el.type}`);
       if (a.op === "fill" && el.type === "cells" && a.items.length !== el.items.length) return fail(`fill has ${a.items.length} slots; '${a.id}' has ${el.items.length}`);
       if (a.op === "set" && !def.state?.length) return fail(`${an(el.type)} has no state to set; use color, move or a new element`);
-      const raw = a.op === "fill" ? { items: a.items, highlight: a.highlight } : a.state;
+      const raw = a.op === "fill" ? { items: a.items, highlight: a.highlight ?? [] } : a.state;
       const patch = def.setSchema.safeParse(raw);
       if (!patch.success) {
         const keys = `; settable: ${def.state!.join(", ")}`;
@@ -289,6 +292,87 @@ const readsCode = (say: string, codes: Iterable<string>) => {
   return lines.map(tokens).some((w) => w.length >= 4 && w.filter((x) => spoken.has(x)).length / w.length >= 0.8);
 };
 
+// Ops a viewer sees as a change of the picture; focus only directs the eye and traces are counted on their own.
+const CHANGES = new Set<string>(["add", "remove", "set", "fill", "color", "move", "morph", "camera"]);
+const SETTLE = 1; // seconds between two changes so the eye can follow each
+const MAX_TRACES = 2; // packets per beat
+const MAX_CAMERA = 4; // camera moves per video: zoom in for a detail and back out, once or twice
+const MAX_HOLD = 15; // seconds a beat may stay still and silent
+const FREE = new Set(["arrow", "group"]); // structure, not a new thing to learn
+const MIN_SCENE = 4; // beats a scene lasts before the next clear: time to grow it and change it
+
+// A video is a few scenes, one per part of the concept, and each one grows: a scene lasts long enough to be
+// built up and changed, nothing flashes by, a change or two per beat with room between them, a calm camera,
+// and quiet between lines. Video only.
+export function pacing(spec: Spec, totalSec: number): Issue[] {
+  const lim = AUDIENCE[spec.audience];
+  const out: Issue[] = [];
+  const warn = (path: string, message: string) => out.push({ path, message });
+  const born = new Map<string, { beat: number; chunks: number }>();
+  const moved = new Map<string, number>(); // id -> beat of its last move
+  const removed: number[] = []; // things (not arrows or annotations) removed per beat
+  const scenes: number[] = [0]; // beat where each scene starts
+  let cameras = 0;
+  spec.beats.forEach((beat, b) => {
+    removed[b] = 0;
+    beat.do.forEach((a, i) => {
+      const path = `beats.${b}.do.${i}`;
+      if (a.op === "add") born.set(a.id, { beat: b, chunks: chunksOf(a) });
+      const came = a.op === "remove" ? born.get(a.id) : undefined;
+      if (a.op === "remove" && came?.chunks) {
+        removed[b]++;
+        if (b - came.beat <= 1) warn(path, `'${a.id}' leaves right after it came; keep it on the board and change it (set, color, move) instead`);
+      }
+      if (a.op === "move") {
+        if (b - (moved.get(a.id) ?? -Infinity) < 3) warn(path, `'${a.id}' moves again within three beats; settle the layout once and leave it`);
+        moved.set(a.id, b);
+      }
+      if (a.op === "camera") {
+        cameras++;
+        if (a.zoom !== undefined && a.zoom < 1) warn(path, "zoom below 1 shows empty space around the board; zoom 1 already shows all of it");
+      }
+      if (a.op !== "clear") return;
+      if (b > 0 && scenes.at(-1) !== b) scenes.push(b);
+      born.clear();
+      moved.clear();
+    });
+    if (removed[b] && b > 0 && removed[b] + removed[b - 1] >= 3) {
+      warn(`beats.${b}`, `${removed[b] + removed[b - 1]} things removed in two beats; keep them and change them, or start a new scene with clear when another part of the idea needs its own picture`);
+    }
+    // one change = one element at one moment; moves at the same moment make room together
+    const events = new Map<string, number>();
+    for (const a of beat.do) {
+      const t = a.wait ?? 0;
+      if (CHANGES.has(a.op)) events.set(a.op === "move" ? `move@${t}` : `${"id" in a ? a.id : a.op}@${t}`, t);
+    }
+    const times = [...events.values()].sort((x, y) => x - y);
+    if (events.size > lim.changes) {
+      warn(`beats.${b}`, `${events.size} changes in one beat; show ${lim.changes} or fewer and let each settle (split the beat)`);
+    } else if (times.some((t, k) => k > 0 && t - times[k - 1] < SETTLE - 1e-6)) {
+      warn(`beats.${b}`, `changes land less than ${SETTLE} s apart; stagger them with wait so the eye can follow each`);
+    }
+    const traces = beat.do.filter((a) => a.op === "trace").length;
+    if (traces > MAX_TRACES) warn(`beats.${b}`, `${traces} packets in one beat; send one or two and let the viewer follow them`);
+    if ((beat.hold ?? 0) > MAX_HOLD) warn(`beats.${b}.hold`, `${beat.hold} s hold; a still, silent screen loses the viewer, keep it under ${MAX_HOLD} s`);
+  });
+  // the last scene may be a short closing card
+  scenes.forEach((start, k) => {
+    const len = (scenes[k + 1] ?? spec.beats.length) - start;
+    if (k < scenes.length - 1 && len < MIN_SCENE) {
+      warn(`beats.${start}`, `this scene lasts ${len} beat${len === 1 ? "" : "s"}; give each scene at least ${MIN_SCENE}: grow it and change it, and switch scenes only when another part of the idea needs its own picture`);
+    }
+  });
+  if (cameras > MAX_CAMERA) warn("beats", `${cameras} camera moves; zoom into one part for a detail and back out, once or twice a video`);
+  // annotations count: a badge or a callout is one more thing to read. A short video still gets two minutes' worth.
+  const ideas = spec.beats.flatMap((beat) => beat.do).filter((a) => a.op === "add" && !FREE.has(a.type)).length;
+  const perMin = Math.round((ideas / (Math.max(totalSec, 120) / 60)) * 10) / 10;
+  if (perMin > lim.ideas) warn("beats", `${ideas} new things in ${Math.round(totalSec)} s (${perMin} a minute); aim under ${lim.ideas}: show fewer things and change what is on screen instead of bringing in new ones`);
+  const spoken = spec.beats.reduce((s, beat) => s + words(beat.say ?? ""), 0);
+  const wpm = Math.round(spoken / (totalSec / 60));
+  if (wpm > lim.wpm) warn("beats", `about ${wpm} spoken words a minute; aim under ${lim.wpm}: fewer, shorter lines and more quiet between them`);
+  return out;
+}
+
 // Advisory checks from learning research and viewer feedback (system level, visual, calm).
 // Never block a render; tell the agent what to fix. totalSec comes from the timeline; 0 = a playground walkthrough, so video-only checks are skipped.
 // maxOnScreen: a playground board is a persistent overview and may hold more than one video view.
@@ -358,9 +442,10 @@ export function lint(spec: Spec, totalSec: number, maxOnScreen: number = AUDIENC
       if ("at" in a && a.at) placed.set(a.id, { el: a, at: a.at, path });
       else if (defOf(a.type).placed) placed.set(a.id, { el: a, at: [8, 4.5], path });
       if (!chunksOf(a)) return;
+      if ("emphasis" in a && a.emphasis === "quiet") return;
       onScreen.set(a.id, chunksOf(a));
       const held = [...onScreen.values()].reduce((s, n) => s + n, 0);
-      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} elements on screen; split the scene or zoom`);
+      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} things in view; leave out what the question does not need, set emphasis: "quiet" on parts now in the background, or start a new scene for the next part of the idea`);
       crowded = held > maxOnScreen;
     });
 
@@ -412,7 +497,7 @@ export function lint(spec: Spec, totalSec: number, maxOnScreen: number = AUDIENC
   const example = [...hops.values()].some((ids) => ids.size >= e2e);
   if (totalSec && e2e && !example) all("no real example end to end: trace one concrete case (label it like 'order 1042') through every component, trigger to result");
   if (totalSec > 360) all(`about ${Math.round(totalSec / 60)} min; split into a series of videos under 6 min`);
-  return out;
+  return totalSec ? [...out, ...pacing(spec, totalSec)] : out;
 }
 
 const zodIssues = (e: z.ZodError): Issue[] => e.issues.map((i) => ({ path: i.path.join("."), message: i.message }));

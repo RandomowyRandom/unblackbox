@@ -3,7 +3,7 @@ import { AUDIENCE, TRACE_STEP, type Action, type Add, type Color, type Pos, type
 import { themeOf, type Palette } from "./themes.ts";
 
 // Seconds. anim = how long every transition takes (calm, not snappy). Breath after speech comes from AUDIENCE.
-export const TIMING = { minBeat: 2, anim: 1.2, tail: 1.5 };
+export const TIMING = { minBeat: 3, anim: 1.2, tail: 2 };
 export const HOME: { to: Pos; zoom: number } = { to: [8, 4.5], zoom: 1 };
 
 export type Voiced = { file: string | null; sec: number };
@@ -72,7 +72,7 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
       if (a.op === "move") tracks.get(a.id)!.moves.push({ frame, to: a.to });
       if (a.op === "morph") tracks.get(a.id)!.morphs.push({ frame, code: a.code });
       if (a.op === "color") tracks.get(a.id)!.colors.push({ frame, color: a.color });
-      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight } });
+      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight ?? [] } }); // fill names the slots that changed now
       if (a.op === "set") tracks.get(a.id)!.sets.push({ frame, state: a.state });
       if (a.op === "pulse") tracks.get(a.id)!.pulses.push(frame);
       if (a.op === "focus") focus.push({ frame, ids: [a.id].flat(), lines: a.lines ?? null });

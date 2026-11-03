@@ -38,13 +38,13 @@ Beat numbers are 0-based everywhere: `--beat 3` is `beats.3` in a warning and ce
 }
 ```
 
-- `audience`: `novice` | `intermediate` (default) | `expert`. Sets the quiet after each line, so the picture can sink in (1.2 / 1.0 / 0.7 s), and lint limits (elements on screen at once 4 / 5 / 6, groups not counted; words per beat 16 / 18 / 22).
-- `voice` is optional: Kokoro `am_michael` at speed 0.95 by default (`{ "provider", "voice", "speed" }`).
+- `audience`: `novice` | `intermediate` (default) | `expert`. Sets the quiet after each line, so the picture can sink in (1.8 / 1.5 / 1.1 s), and lint limits: things in view at once in a scene 5 / 7 / 9 (groups, arrows, annotations and parts with `emphasis: "quiet"` not counted); words per beat 14 / 16 / 20; changes per beat 2 / 3 / 4 (moves at the same moment count as one); spoken words per minute 80 / 90 / 110; new things per minute 4 / 5 / 6 (annotations included; videos under 2 minutes count as 2 minutes).
+- `voice` is optional: Kokoro `am_michael` at speed 0.9 by default (`{ "provider", "voice", "speed" }`).
 - `sources`: where the facts and the "why" came from (ADR, commit, PR, `file:line`). Not drawn; echoed by `render` so the hand-off can cite them.
 - `theme` is optional: `{ "preset": "dim" | "light" | "contrast", "accent": "blue" | "violet" | "teal" | "amber" }`, default dim and blue. Colors stay semantic in every theme.
 - A beat may start a section with `chapter` ("The fix", at most 4 words): a small label in the top-left corner until the next chapter. `transition` sets how the beat's new elements come in and how what its `clear` or `remove` takes out goes away: `fade` (default), `cut` or `slide`.
 - Every object is strict: an unknown or misspelled key (`lable`) is an error with its path, never silently ignored.
-- A beat lasts as long as its narration plus the quiet, at least `hold` seconds (default 2), and long enough for its actions to settle. `think: N` then adds N seconds in which the `say` text (the question) is shown on a panel at the bottom with a countdown; it uses no on-screen slot, but keep the bottom ~1.5 units clear on that beat.
+- A beat lasts as long as its narration plus the quiet, at least `hold` seconds (default 3), and long enough for its actions to settle. `think: N` then adds N seconds in which the `say` text (the question) is shown on a panel at the bottom with a countdown; it uses no on-screen slot, but keep the bottom ~1.5 units clear on that beat.
 - Actions start at beat start, or `wait` seconds later. Every transition takes 1.2 s, so the pace is calm by default; stagger adds with `wait` instead of dropping everything at once.
 - The on-screen element count follows the order of `do`, not `wait` times: list a `remove` before the `add` that replaces it.
 
@@ -147,21 +147,21 @@ Each one shows an idea directly; pick by the concept map in the rules. `unblackb
 | `trace` `{ids, label?, icon?, speed?, color?}` | a packet travels along these arrows (or component edges like `flow.retry`) in order, `speed` seconds each (default 1); with `label`/`icon` it shows what travels; for the example case name the instance ("order 1042", "Ana's edit"); `color: "bad"` for a failing request. Each arrow should start where the previous ended |
 | `focus` `{id, lines?}` | one id or a list of ids dims everything else already on screen; elements added at the same moment or later stay bright. One code id + `lines: [[from, to], ...]` (1-based) dims its other lines and leaves other elements as they were |
 | `unfocus` | clears focus |
-| `camera` `{to? or on?, zoom?}` | pans so `to` (or the element `on`) is screen center and zooms (1 = whole canvas, 2 = half the canvas fills the screen); use it to dive from a system into its components; `{}` resets |
+| `camera` `{to? or on?, zoom?}` | pans so `to` (or the element `on`) is screen center and zooms (1 = whole canvas, 2 = half the canvas fills the screen); zoom into one part for a detail and back out a beat or two later, once or twice a video; the board stays the same; `{}` resets |
 | `set` `{id, state}` | a component's state changes and animates there: a gauge needle moves, a lock closes, a state machine changes state, a node goes down. `state` holds only the fields the type lets `set` change (`unblackbox components <type>`); the result is checked like a new element |
-| `fill` `{id, items, highlight?}` | short for `set` on `cells`, same slot count: the example's order lands in the queue, a slot empties. `highlight` the slots that changed |
+| `fill` `{id, items, highlight?}` | short for `set` on `cells`, same slot count: the example's order lands in the queue, a slot empties. `highlight` the slots that changed; without it no slot glows |
 | `pulse` `{id}` | one attention ring around an element: "look here", without changing anything |
 | `color` `{id, color}` | an element changes color over 1.2 s to show a change of state: a component failing (`bad`, which also turns it dashed), recovering (`good`), becoming the subject (`accent`). Not for code |
 | `morph` `{id, code}` | code animates to new source; unchanged tokens glide to their new spot |
-| `clear` | removes everything, resets focus and camera |
+| `clear` | removes everything, resets focus and camera: starts a new scene. Use it only when the story moves to a part of the idea that needs its own picture, at least 4 beats after the last one |
 
 Ids are unique for the whole video; use a new id when re-adding something.
 
 ## Warnings `validate` gives
 
-Too dense: more elements on screen than the audience limit; a beat longer than the word limit; a video over about 6 minutes. Too low-level: a function, variable or constant name (`isExpired`, `ONE_DAY_MS`) in narration; code over 8 lines; code in more than a quarter of the beats; narration that reads a code line aloud. Layout: footprints that overlap; an element past the canvas edge. Too wordy, not visual: a label over 5 words (8 for titles); many text elements; boxes without any icons. No real example: the traces with one concrete label (a number, name or file: "order 1042", "Ana", "queue.json"; not a lowercase kind like "order") do not pass through at least 3 arrows between them (1 when the video has fewer than 3 arrows). Also: a chapter label over 4 words; an unlabeled arrow; a component name (`OrderService`) spoken before it is on screen; a trace whose arrows do not connect; a think beat that is not a question; more than two think beats. Fix them unless you have a reason not to.
+Too dense or too jumpy (video only): more things in view than the audience limit; a beat longer than the word limit; more changes in a beat than the limit, or changes less than 1 s apart; more than two packets in a beat; an element removed in the beat after it came, or three or more removed within two beats; an element moved again within three beats; a scene (from one `clear` to the next) shorter than 4 beats; more than four camera moves, or a zoom below 1; a `hold` over 15 s; more new things or spoken words per minute than the limit; a video over about 6 minutes. Too low-level: a function, variable or constant name (`isExpired`, `ONE_DAY_MS`) in narration; code over 8 lines; code in more than a quarter of the beats; narration that reads a code line aloud. Layout: footprints that overlap; an element past the canvas edge. Too wordy, not visual: a label over 5 words (8 for titles); many text elements; boxes without any icons. No real example: the traces with one concrete label (a number, name or file: "order 1042", "Ana", "queue.json"; not a lowercase kind like "order") do not pass through at least 3 arrows between them (1 when the video has fewer than 3 arrows). Also: a chapter label over 4 words; an unlabeled arrow; a component name (`OrderService`) spoken before it is on screen; a trace whose arrows do not connect; a think beat that is not a question; more than two think beats. Fix them unless you have a reason not to.
 
-Examples: `examples/queue-decoupling.json` (system: one real order traced end to end, icons, cells, packets, focus, think) and `examples/magic-numbers.json` (a small code change, the rare case where code is the subject).
+Examples: `examples/queue-decoupling.json` (system: one scene that grows as one real order is traced end to end; components, state changes, focus, think) and `examples/magic-numbers.json` (a small code change, the rare case where code is the subject).
 
 ## Playground (interactive sandbox)
 
@@ -176,7 +176,7 @@ A playground is a small Tauri app where the viewer plays with the system the vid
 ```json
 {
   "title": "Queue playground",
-  "scene": [ "add ops: the board, usually the video's big-picture view" ],
+  "scene": [ "add ops: the board, usually the video's main scene as it ends" ],
   "intro": { "say": "Press a button to make something happen, or click any part." },
   "events": [
     { "id": "crash", "label": "Crash worker", "icon": "flame",
