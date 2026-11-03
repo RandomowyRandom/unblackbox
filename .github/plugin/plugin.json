@@ -2,9 +2,19 @@
   "name": "unblackbox",
   "version": "0.1.0",
   "description": "Narrated explainer videos of how a system works, written by your agent: components, data flowing between them, one real example traced end to end, a voice. Plus interactive playgrounds.",
-  "author": { "name": "RandomowyRandom", "url": "https://github.com/RandomowyRandom" },
+  "license": "MIT",
+  "author": {
+    "name": "RandomowyRandom",
+    "url": "https://github.com/RandomowyRandom"
+  },
   "homepage": "https://github.com/RandomowyRandom/unblackbox",
   "repository": "https://github.com/RandomowyRandom/unblackbox",
-  "keywords": ["explainer", "video", "architecture", "onboarding", "documentation"],
+  "keywords": [
+    "explainer",
+    "video",
+    "architecture",
+    "onboarding",
+    "documentation"
+  ],
   "skills": "skills/"
 }

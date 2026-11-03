@@ -185,6 +185,9 @@ npm test
 npm run typecheck
 ```
 
-## Licensing note
+## License
 
-unblackbox renders with [Remotion](https://www.remotion.dev), which is free for individuals and companies of up to 3 people; larger companies need a [Remotion company license](https://www.remotion.dev/license).
+unblackbox is [MIT](LICENSE). Its dependencies are installed from npm and come with their own licenses; two matter in practice:
+
+- **Remotion** (the renderer and the playground player) is source-available, not open source. It is free for individuals, non-profits and companies of up to 3 people; larger for-profit companies need a [Remotion company license](https://www.remotion.dev/license) to use unblackbox. This also applies to anyone you share a playground folder with, since it contains the Remotion player.
+- **Kokoro** (the voice model) is Apache-2.0. The `phonemizer` package it uses is labelled Apache-2.0 but bundles eSpeak NG, which is GPL-3.0; if you ship a bundle that includes it, treat that bundle as GPL. Videos and audio you generate are yours.
