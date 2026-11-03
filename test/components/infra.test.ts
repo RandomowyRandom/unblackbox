@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { infra } from "../../src/components/infra.ts";
-import { edgesOf, parseSpec, partsOf, type Add } from "../../src/spec.ts";
+import { infra, memoryLayout } from "../../src/components/infra.ts";
+import { edgesOf, parseSpec, partsOf, sizeOf, type Add } from "../../src/spec.ts";
 
 const one = (...ops: unknown[]) => ({ title: "t", beats: [{ do: ops }] });
 const add = (type: string, fields: object, at: number[] | null = [8, 4.5]) => ({ op: "add", type, id: "x", ...(at ? { at } : {}), ...fields });
@@ -90,4 +90,47 @@ test("device: text must fit the screen, the button is a part while it shows", ()
   const arrow = { op: "add", type: "arrow", id: "a", from: "x.button", to: [14, 4.5], label: "POST /pay" };
   assert.deepEqual(issues(d, arrow, set({ button: "" })),
     [{ path: "beats.0.do.2", message: "'a' still points at 'x.button', which this change removes" }]);
+});
+
+test("cluster: a node without a label shows its id, so the id must fit under the node", () => {
+  const { add: a } = example("cluster") as { add: { nodes: { id: string; label?: string }[] } };
+  const { label: _, ...long } = { ...a.nodes[1], id: "replica-east-2" };
+  assert.deepEqual(issues(add("cluster", { ...a, nodes: [a.nodes[0], long] })),
+    [{ path: "beats.0.do.0", message: "node 'replica-east-2' shows its id as its name, 14 characters; give it a label of up to 10" }]);
+  assert.deepEqual(issues(add("cluster", { ...a, nodes: [a.nodes[0], { ...long, label: "east-2" }] })), []);
+});
+
+test("shards: boundary keys never repeat, owners fit their segment", () => {
+  const { add: a } = example("shards") as { add: object };
+  // an empty range (from = to) repeats a boundary key
+  assert.deepEqual(issues(add("shards", { ...a, ranges: [{ id: "r1", from: "a", to: "a" }, { id: "r2", from: "a", to: "z" }] })),
+    [{ path: "beats.0.do.0", message: "boundary key 'a' appears twice; keys run left to right, so each range needs its own from and to" }]);
+  const eight = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, from: String(i), to: String(i + 1), owner: "node-1" }));
+  assert.deepEqual(issues(add("shards", { ...a, ranges: eight })), []);
+  assert.deepEqual(issues(add("shards", { ...a, ranges: eight.map((r, i) => (i ? r : { ...r, owner: "eu-west-1" })) })),
+    [{ path: "beats.0.do.0", message: "owner 'eu-west-1' of range 'r0' is 9 characters; with 8 ranges a segment fits 6" }]);
+});
+
+test("memory: pointer labels are unique, a region has room for its pointers, the caption stays in the footprint", () => {
+  const { add: a } = example("memory") as { add: { regions: { id: string; size: number }[]; pointers: object[] } };
+  const m = add("memory", a);
+  assert.deepEqual(issues(m, set({ pointers: [{ label: "cart", to: "heap" }, { label: "cart", to: "stack" }] })),
+    [{ path: "beats.0.do.1", message: "pointer label 'cart' used twice; each pointer needs its own name" }]);
+  const four = ["a", "b", "c", "d"].map((label) => ({ label, to: "stack" }));
+  assert.deepEqual(issues(m, set({ pointers: four })),
+    [{ path: "beats.0.do.1", message: "region 'stack' is too short for 4 pointer labels; give it a larger size" }]);
+  assert.deepEqual(issues(add("memory", { ...a, regions: a.regions.map((r) => ({ ...r, label: "a".repeat(15) })) })).map((i) => i.path),
+    ["beats.0.do.0.regions.0.label", "beats.0.do.0.regions.1.label", "beats.0.do.0.regions.2.label"]);
+  // the caption is centered under the column, which sits right of center beside pointers
+  const wide = el(add("memory", { ...a, label: "x".repeat(24) })) as Extract<Add, { type: "memory" }>;
+  assert.ok(sizeOf(wide)[0] / 2 >= memoryLayout(wide).cx + (24 * 0.26 * 0.55) / 2 - 1e-9);
+});
+
+test("barrier: long enough for its break to show, label warned when it runs off the canvas", () => {
+  const b = add("barrier", example("barrier").add, null);
+  assert.deepEqual(issues({ ...b, from: [8, 4], to: [8, 5] }),
+    [{ path: "beats.0.do.0", message: "barrier is 1 units long; make it at least 2 so the gap a break opens shows" }]);
+  const lint = infra.find((d) => d.type === "barrier")!.lint!;
+  assert.deepEqual(lint(el({ ...b, from: [15, 1], to: [15, 8] }) as never), ["barrier label runs past the canvas edge; move the barrier or shorten the label"]);
+  assert.deepEqual(lint(el(b) as never), []);
 });
