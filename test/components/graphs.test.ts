@@ -50,7 +50,7 @@ test("check() errors land on the op with an exact message", () => {
     at("highlight points at 'dns', which is not one of its layers: app, http, tls, tcp, ip", 1));
   assert.deepEqual(issues(add("files", { entries: [{ id: "a", path: "src/a.ts" }, { id: "b", path: "src/a.ts" }] })), at("path 'src/a.ts' listed twice"));
   assert.deepEqual(issues(add("commits", { commits: [{ id: "a1", branch: "main" }, { id: "b2", branch: "main", parents: ["c3"] }, { id: "c3", branch: "dev" }] })),
-    at("commit 'c3' points at 'dev', which is not one of its branches: main, fix").concat(at("parent 'c3' of commit 'b2' must be a commit listed before it")));
+    at("commit 'c3' points at 'dev', which is not one of its branches: main, fix").concat(at("parent 'c3' of commit 'b2' must be a commit listed before it"), at("head points at branch 'fix', which has no commits yet")));
 });
 
 test("regressions: merges, HEAD and paths that cannot be drawn are errors", () => {
