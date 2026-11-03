@@ -10,9 +10,9 @@
   An agent-driven CLI that turns one JSON spec into a calm, visual explainer video: components, data flowing between them, one real example traced end to end, and a voice.
 </p>
 
-<p align="center">
 https://github.com/user-attachments/assets/c6c4b0ef-af69-4b54-b192-62066df75484
-</p>
+
+<p align="center"><sub>The overview above was made with unblackbox from <a href="docs/overview.json"><code>docs/overview.json</code></a>.</sub></p>
 
 ---
 
