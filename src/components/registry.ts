@@ -10,9 +10,9 @@ export const iconFor = (name: string) =>
 
 export const Id = z.string().regex(/^[a-zA-Z][\w-]*$/, "id must start with a letter, then letters, digits, _ or -");
 // An element, or one named part of it: "cache.1042", "tree.root". Parts and edges come from the component.
-export const Ref = z.string().regex(/^[a-zA-Z][\w-]*(\.[\w-]+)?$/, "use an element id, or id.part for a part of a component (e.g. cache.1042)");
+export const Ref = z.string().regex(/^[a-zA-Z][\w-]*(\.[\w:-]+)?$/, "use an element id, or id.part for a part of a component (e.g. cache.1042)");
 // Ids of things inside one component (nodes, keys, stages): they become "element.part" refs.
-export const PartId = z.string().regex(/^[\w-]+$/, "use letters, digits, _ or - so it works as a ref like 'cache.1042'");
+export const PartId = z.string().regex(/^[\w:-]+$/, "use letters, digits, _, - or : so it works as a ref like 'cache.1042' or 'cache.user:42'");
 export const Pos = z.tuple([z.number().min(0).max(GRID.w), z.number().min(0).max(GRID.h)]).describe("[x, y] in grid units (16 x 9)");
 export const Color = z.enum(["accent", "muted", "good", "bad"]).describe("semantic color; hex is not allowed so the style stays consistent");
 export const Wait = z.number().min(0).optional().describe("seconds after beat start before this action runs");

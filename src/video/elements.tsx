@@ -44,7 +44,10 @@ export function Element({ tr, ctx }: { tr: Track; ctx: Ctx }) {
   const el = stateAt(tr, ctx.frame);
   const k = scaleOf(el);
   const u = ctx.unit * k;
-  const [w, h] = def.placed ? sizeOf(el).map((v) => v * ctx.unit) : [0, 0];
+  // the footprint eases with each set, like everything else, instead of snapping
+  const [w, h] = def.placed
+    ? [0, 1].map((k) => animate(sizeOf(tr.el)[k], history(tr).map((s) => ({ frame: s.frame, value: sizeOf(s.state)[k] })), ctx.frame, ctx.t.fps) * ctx.unit)
+    : [0, 0];
   const enter = enterAt(tr, ctx);
   const exit = exitAt(tr, ctx);
   const { color, bad } = paint(tr, ctx, ctx.pal.accent);

@@ -54,7 +54,7 @@ test("table: rows are parts by key; cells, keys and highlights are checked", () 
     { path: "beats.0.do.0", message: "highlight column 'total' is not there" },
   ]);
   assert.deepEqual(issues(add("table"), set({ columns: ["a", "b"] })).map((i) => i.path), ["beats.0.do.1.state"]);
-  assert.deepEqual(issues(add("table"), set({ rows: [{ key: "sess:ana", cells: ["", ""] }] })).map((i) => i.path), ["beats.0.do.1.state.rows.0.key"]);
+  assert.deepEqual(issues(add("table"), set({ rows: [{ key: "sess ana", cells: ["", ""] }] })).map((i) => i.path), ["beats.0.do.1.state.rows.0.key"]);
 });
 
 test("kv: keys are parts; duplicate keys and unknown highlights are errors", () => {
