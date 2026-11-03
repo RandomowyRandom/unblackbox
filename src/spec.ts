@@ -9,11 +9,11 @@ export { CAPTION, Color, GRID, Icon, ICON_SIZE, iconFor, Id, Pos, Ref };
 // sink in; novices need more of it and fewer new names at once (working memory holds ~4 chunks).
 // changes = visible changes per beat (add, remove, set, color, move); wpm = spoken words per minute of video;
 // ideas = new things (components, actors, annotations) per minute: one scene that grows slowly, not a stream of new views.
-// maxOnScreen = things in view on the finished board; parts set to emphasis "quiet" do not count.
+// maxOnScreen = things in view at once in a scene; parts set to emphasis "quiet" do not count.
 export const AUDIENCE = {
-  novice: { pad: 1.8, maxOnScreen: 6, wordsPerBeat: 14, changes: 2, wpm: 80, ideas: 4 },
-  intermediate: { pad: 1.5, maxOnScreen: 8, wordsPerBeat: 16, changes: 3, wpm: 90, ideas: 5 },
-  expert: { pad: 1.1, maxOnScreen: 10, wordsPerBeat: 20, changes: 4, wpm: 110, ideas: 6 },
+  novice: { pad: 1.8, maxOnScreen: 5, wordsPerBeat: 14, changes: 2, wpm: 80, ideas: 4 },
+  intermediate: { pad: 1.5, maxOnScreen: 7, wordsPerBeat: 16, changes: 3, wpm: 90, ideas: 5 },
+  expert: { pad: 1.1, maxOnScreen: 9, wordsPerBeat: 20, changes: 4, wpm: 110, ideas: 6 },
 } as const;
 export const TRACE_STEP = 1.0; // default seconds the trace packet spends on each arrow
 const MAX_LABEL_WORDS = 5; // labels name things; narration explains them
@@ -299,9 +299,11 @@ const MAX_TRACES = 2; // packets per beat
 const MAX_CAMERA = 4; // camera moves per video: zoom in for a detail and back out, once or twice
 const MAX_HOLD = 15; // seconds a beat may stay still and silent
 const FREE = new Set(["arrow", "group"]); // structure, not a new thing to learn
+const MIN_SCENE = 4; // beats a scene lasts before the next clear: time to grow it and change it
 
-// A video is one scene that grows: nothing swapped out (by clear or by removing), nothing that flashes by,
-// a change or two per beat with room between them, a calm camera, and quiet between lines. Video only.
+// A video is a few scenes, one per part of the concept, and each one grows: a scene lasts long enough to be
+// built up and changed, nothing flashes by, a change or two per beat with room between them, a calm camera,
+// and quiet between lines. Video only.
 export function pacing(spec: Spec, totalSec: number): Issue[] {
   const lim = AUDIENCE[spec.audience];
   const out: Issue[] = [];
@@ -309,7 +311,7 @@ export function pacing(spec: Spec, totalSec: number): Issue[] {
   const born = new Map<string, { beat: number; chunks: number }>();
   const moved = new Map<string, number>(); // id -> beat of its last move
   const removed: number[] = []; // things (not arrows or annotations) removed per beat
-  const clears: string[] = [];
+  const scenes: number[] = [0]; // beat where each scene starts
   let cameras = 0;
   spec.beats.forEach((beat, b) => {
     removed[b] = 0;
@@ -330,12 +332,12 @@ export function pacing(spec: Spec, totalSec: number): Issue[] {
         if (a.zoom !== undefined && a.zoom < 1) warn(path, "zoom below 1 shows empty space around the board; zoom 1 already shows all of it");
       }
       if (a.op !== "clear") return;
-      clears.push(path);
+      if (b > 0 && scenes.at(-1) !== b) scenes.push(b);
       born.clear();
       moved.clear();
     });
     if (removed[b] && b > 0 && removed[b] + removed[b - 1] >= 3) {
-      warn(`beats.${b}`, `${removed[b] + removed[b - 1]} things removed in two beats swaps the scene; keep them and change them, or set emphasis: "quiet"`);
+      warn(`beats.${b}`, `${removed[b] + removed[b - 1]} things removed in two beats; keep them and change them, or start a new scene with clear when another part of the idea needs its own picture`);
     }
     // one change = one element at one moment; moves at the same moment make room together
     const events = new Map<string, number>();
@@ -353,9 +355,13 @@ export function pacing(spec: Spec, totalSec: number): Issue[] {
     if (traces > MAX_TRACES) warn(`beats.${b}`, `${traces} packets in one beat; send one or two and let the viewer follow them`);
     if ((beat.hold ?? 0) > MAX_HOLD) warn(`beats.${b}.hold`, `${beat.hold} s hold; a still, silent screen loses the viewer, keep it under ${MAX_HOLD} s`);
   });
-  if (clears.length > 1) {
-    warn(clears[1], `${clears.length} scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once`);
-  }
+  // the last scene may be a short closing card
+  scenes.forEach((start, k) => {
+    const len = (scenes[k + 1] ?? spec.beats.length) - start;
+    if (k < scenes.length - 1 && len < MIN_SCENE) {
+      warn(`beats.${start}`, `this scene lasts ${len} beat${len === 1 ? "" : "s"}; give each scene at least ${MIN_SCENE}: grow it and change it, and switch scenes only when another part of the idea needs its own picture`);
+    }
+  });
   if (cameras > MAX_CAMERA) warn("beats", `${cameras} camera moves; zoom into one part for a detail and back out, once or twice a video`);
   // annotations count: a badge or a callout is one more thing to read. A short video still gets two minutes' worth.
   const ideas = spec.beats.flatMap((beat) => beat.do).filter((a) => a.op === "add" && !FREE.has(a.type)).length;
@@ -439,7 +445,7 @@ export function lint(spec: Spec, totalSec: number, maxOnScreen: number = AUDIENC
       if ("emphasis" in a && a.emphasis === "quiet") return;
       onScreen.set(a.id, chunksOf(a));
       const held = [...onScreen.values()].reduce((s, n) => s + n, 0);
-      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} things in view; leave out what the question does not need, or set emphasis: "quiet" on parts now in the background`);
+      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} things in view; leave out what the question does not need, set emphasis: "quiet" on parts now in the background, or start a new scene for the next part of the idea`);
       crowded = held > maxOnScreen;
     });
 

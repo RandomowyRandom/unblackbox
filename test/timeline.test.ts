@@ -130,6 +130,7 @@ test("lint flags research-backed problems", () => {
   assert.deepEqual(withoutPacing(spec, 400), [
     { path: "beats.0.do.5", message: "arrow has no label; name what flows along it" },
     { path: "beats.0.do.7", message: "trace jumps from 'x' to 'y'; each arrow should start where the last ended" },
+    { path: "beats.0.do.8", message: "more than 5 things in view; leave out what the question does not need, set emphasis: \"quiet\" on parts now in the background, or start a new scene for the next part of the idea" },
     { path: "beats.0.say", message: "'isExpired' is a function or variable name; talk about the component and what it does" },
     { path: "beats.1.say", message: "narration reads a code line aloud; say what it means instead" },
     { path: "beats.1.say", message: "a think beat should end with the question to predict" },
@@ -205,7 +206,7 @@ test("color and fill changes become timed track events and are checked", () => {
   ]);
 });
 
-test("pacing wants one scene that grows slowly", () => {
+test("pacing wants a few scenes that each grow slowly", () => {
   const box = (id: string, x: number, wait?: number, extra = {}) => ({ op: "add", type: "box", id, label: id, icon: "server", at: [x, 4.5], wait, ...extra });
   const spec = parseSpec({
     title: "t",
@@ -220,7 +221,8 @@ test("pacing wants one scene that grows slowly", () => {
     { path: "beats.0", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
     { path: "beats.1.do.1", message: "'d' leaves right after it came; keep it on the board and change it (set, color, move) instead" },
     { path: "beats.3", message: "changes land less than 1 s apart; stagger them with wait so the eye can follow each" },
-    { path: "beats.3.do.0", message: "2 scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once" },
+    { path: "beats.0", message: "this scene lasts 2 beats; give each scene at least 4: grow it and change it, and switch scenes only when another part of the idea needs its own picture" },
+    { path: "beats.2", message: "this scene lasts 1 beat; give each scene at least 4: grow it and change it, and switch scenes only when another part of the idea needs its own picture" },
   ]);
   assert.deepEqual(lint(spec, 0).filter((i) => /a minute|scene changes|in one beat/.test(i.message)), []); // playground walkthroughs skip it
 
@@ -242,15 +244,15 @@ test("pacing wants one scene that grows slowly", () => {
     { path: "beats.2.do.0", message: "'a' moves again within three beats; settle the layout once and leave it" },
     { path: "beats.2", message: "3 packets in one beat; send one or two and let the viewer follow them" },
     { path: "beats.3.do.0", message: "zoom below 1 shows empty space around the board; zoom 1 already shows all of it" },
-    { path: "beats.4", message: "3 things removed in two beats swaps the scene; keep them and change them, or set emphasis: \"quiet\"" },
+    { path: "beats.4", message: "3 things removed in two beats; keep them and change them, or start a new scene with clear when another part of the idea needs its own picture" },
     { path: "beats.4", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
     { path: "beats.4.hold", message: "20 s hold; a still, silent screen loses the viewer, keep it under 15 s" },
     { path: "beats", message: "5 camera moves; zoom into one part for a detail and back out, once or twice a video" },
   ]);
 
-  // a finished board may hold up to 8 things for intermediate viewers; quiet parts do not count
-  const board = (quiet: boolean) => parseSpec({ title: "t", beats: [{ do: Array.from({ length: 9 }, (_, k) => box(`p${k}`, 1 + k * 1.7, 0, { w: 1.5, ...(quiet && k < 2 && { emphasis: "quiet" }) })) }] }).spec!;
+  // a scene may hold up to 7 things at once for intermediate viewers; quiet parts do not count
+  const board = (quiet: boolean) => parseSpec({ title: "t", beats: [{ do: Array.from({ length: 8 }, (_, k) => box(`p${k}`, 1 + k * 1.7, 0, { w: 1.5, ...(quiet && k < 2 && { emphasis: "quiet" }) })) }] }).spec!;
   const crowded = (quiet: boolean) => lint(board(quiet), 0).filter((i) => i.message.includes("things in view"));
-  assert.deepEqual(crowded(false).map((i) => i.path), ["beats.0.do.8"]);
+  assert.deepEqual(crowded(false).map((i) => i.path), ["beats.0.do.7"]);
   assert.deepEqual(crowded(true), []);
 });
