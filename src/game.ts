@@ -1,20 +1,20 @@
 import { z } from "zod";
-import { Action, Add, checkSemantics, Color, Icon, Id, Spec, type Beat, type Issue } from "./spec.ts";
+import { Action, Add, checkSemantics, Color, Icon, Id, resolvePlaces, Spec, type Beat, type Issue } from "./spec.ts";
 import type { Voiced } from "./timeline.ts";
 
 // A playground is a sandbox over one board: buttons trigger events, clicking a component explains it.
-// Lines only change state (trace, color, fill, focus, camera, move); the board itself is built once in `scene`.
-const STATE_OPS = ["trace", "color", "fill", "focus", "unfocus", "camera", "move"];
-const StateAction = Action.refine((a) => STATE_OPS.includes(a.op), "only trace, color, fill, focus, unfocus, camera and move run in a playground; build the board in scene");
+// Lines only change state (trace, color, fill, set, pulse, focus, camera, move); the board itself is built once in `scene`.
+const STATE_OPS = ["trace", "color", "fill", "set", "pulse", "focus", "unfocus", "camera", "move"];
+const StateAction = Action.refine((a) => STATE_OPS.includes(a.op), "only trace, color, fill, set, pulse, focus, unfocus, camera and move run in a playground; build the board in scene");
 
-const Line = z.object({
+const Line = z.strictObject({
   say: z.string().optional().describe("spoken and captioned; one or two short sentences"),
   do: z.array(StateAction).default([]),
 });
 const Outcome = Line.extend({
   if: z.record(Id, Color).optional().describe("element id -> the color it must have right now; colors are the sandbox's state"),
 });
-const Event = z.object({
+const Event = z.strictObject({
   id: Id,
   label: z.string().describe("button text, two or three words"),
   icon: Icon,
@@ -73,7 +73,12 @@ export function parseGame(input: unknown): { game: Game; issues: [] } | { game: 
     }));
   });
   for (const id of Object.keys(game.inspect)) if (!ids.has(id)) issues.push({ path: `inspect.${id}`, message: `'${id}' is not on the board` });
-  return issues.length ? { game: null, issues } : { game, issues: [] };
+  if (issues.length) return { game: null, issues };
+  // `place` and `camera.on` become positions, like in a video
+  const resolved = resolvePlaces(walkthrough(game)).beats;
+  game.scene = resolved[0].do as Game["scene"];
+  linesOf(game).forEach(({ line }, i) => (line.do = resolved[i + 1].do));
+  return { game, issues: [] };
 }
 
 // Runtime state: the color each element has now. Arrows start muted, everything else accent.
