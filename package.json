@@ -9,7 +9,7 @@
     "unblackbox": "src/cli.ts"
   },
   "scripts": {
-    "test": "node --test test/*.test.ts",
+    "test": "node --test test/*.test.ts test/components/*.test.ts",
     "typecheck": "tsc",
     "play:build": "vite build play && tauri build --no-bundle"
   },

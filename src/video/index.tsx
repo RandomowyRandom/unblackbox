@@ -1,4 +1,5 @@
 import { AbsoluteFill, Composition, Freeze, registerRoot } from "remotion";
+import { DEFAULT_THEME, themeOf } from "../themes.ts";
 import type { Timeline } from "../timeline.ts";
 import { sans } from "./theme.ts";
 import { Video } from "./Video.tsx";
@@ -18,14 +19,14 @@ function Sheet({ t, frames, labels }: SheetProps) {
               <Video {...t} />
             </Freeze>
           </div>
-          <div style={{ position: "absolute", left: 6, top: 4, padding: "2px 8px", background: "#000c", color: "#fff", fontFamily: sans, fontSize: 20 }}>{labels?.[i] ?? i}</div>
+          <div style={{ position: "absolute", right: 6, top: 4, padding: "2px 8px", background: "#000c", color: "#fff", fontFamily: sans, fontSize: 20 }}>{labels?.[i] ?? (t.beats[i]?.chapter && t.beats[i].chapter !== t.beats[i - 1]?.chapter ? `${i} · ${t.beats[i].chapter}` : i)}</div>
         </div>
       ))}
     </AbsoluteFill>
   );
 }
 
-const empty: Timeline = { fps: 30, width: 1920, height: 1080, totalFrames: 1, beats: [], tracks: [], focus: [], camera: [], traces: [] };
+const empty: Timeline = { fps: 30, width: 1920, height: 1080, totalFrames: 1, pal: themeOf(DEFAULT_THEME), beats: [], tracks: [], focus: [], camera: [], traces: [], chapters: [] };
 
 registerRoot(() => (
   <>

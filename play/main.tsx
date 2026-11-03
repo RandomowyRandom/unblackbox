@@ -6,7 +6,8 @@ import { createRoot } from "react-dom/client";
 import { appendLine, applyColors, initialColors, pickOutcome, walkthrough, type Bundle, type Colors, type Line } from "../src/game.ts";
 import { iconFor } from "../src/spec.ts";
 import { buildTimeline, type Voiced } from "../src/timeline.ts";
-import { palette, sans } from "../src/video/theme.ts";
+import { themeOf, type Palette } from "../src/themes.ts";
+import { sans } from "../src/video/theme.ts";
 import { Video } from "../src/video/Video.tsx";
 
 const HOUR = 30 * 60 * 60; // the board keeps running; lines are appended as the player acts
@@ -18,7 +19,7 @@ async function locate(): Promise<(file: string) => string> {
   return (file) => convertFileSrc(`${dir}/${file}`);
 }
 
-const button = (enabled: boolean): React.CSSProperties => ({
+const button = (enabled: boolean, palette: Palette): React.CSSProperties => ({
   display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 10, border: `2px solid ${palette.accent}`,
   background: `color-mix(in srgb, ${palette.accent} 12%, transparent)`, color: palette.text, fontFamily: sans, fontSize: 17,
   cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.45, transition: "opacity .2s", textAlign: "left",
@@ -26,6 +27,7 @@ const button = (enabled: boolean): React.CSSProperties => ({
 
 function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => string }) {
   const { game, voices } = bundle;
+  const palette = themeOf(game.theme);
   const player = useRef<PlayerRef>(null);
   const spec = useMemo(() => walkthrough(game), [game]);
   const [live, setLive] = useState(() => ({ beats: [spec.beats[0]], voiced: [{ file: null, sec: 0 }] as Voiced[] }));
@@ -87,7 +89,7 @@ function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => st
           const Icon = iconFor(e.icon);
           const enabled = started && !busy;
           return (
-            <button key={e.id} disabled={!enabled} style={button(enabled)}
+            <button key={e.id} disabled={!enabled} style={button(enabled, palette)}
               onClick={() => { const k = pickOutcome(e, colors); run(`event.${e.id}.${k}`, e.outcomes[k]); }}>
               <Icon size={22} color={palette.accent} /> {e.label}
             </button>
@@ -98,7 +100,7 @@ function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => st
         <div style={{ position: "fixed", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28,
           background: `color-mix(in srgb, ${palette.bg} 92%, transparent)` }}>
           <div style={{ fontSize: 44, fontWeight: 600 }}>{game.title}</div>
-          <button style={{ ...button(true), fontSize: 22, padding: "16px 40px" }} onClick={start}>Start</button>
+          <button style={{ ...button(true, palette), fontSize: 22, padding: "16px 40px" }} onClick={start}>Start</button>
         </div>
       )}
     </div>

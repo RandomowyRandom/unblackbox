@@ -52,7 +52,7 @@ test("game mistakes are reported where they are in the game file", () => {
   delete bad.events[0].outcomes[0].do[1];
   bad.events[0].outcomes[0].do = bad.events[0].outcomes[0].do.filter(Boolean);
   assert.deepEqual(parseGame(bad).issues, [
-    { path: "events.2.outcomes.0.do.1", message: "trace step 'nope' is not a live arrow" },
+    { path: "events.2.outcomes.0.do.1.ids.0", message: "trace step 'nope' is not a live arrow" },
     { path: "events.1.outcomes", message: "the last outcome must have no `if`, so every press does something" },
     { path: "inspect.ghost", message: "'ghost' is not on the board" },
   ]);

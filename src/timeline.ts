@@ -1,5 +1,6 @@
 import type { HighlightedCode } from "codehike/code";
-import { AUDIENCE, TRACE_STEP, type Action, type Add, type Color, type Pos, type Spec } from "./spec.ts";
+import { AUDIENCE, TRACE_STEP, type Action, type Add, type Color, type Pos, type Spec, type Transition } from "./spec.ts";
+import { themeOf, type Palette } from "./themes.ts";
 
 // Seconds. anim = how long every transition takes (calm, not snappy). Breath after speech comes from AUDIENCE.
 export const TIMING = { minBeat: 2, anim: 1.2, tail: 1.5 };
@@ -10,30 +11,36 @@ export type Track = {
   el: Add;
   start: number;
   end: number | null;
+  enter: Transition; // how it comes in (its beat's transition)
+  exit: Transition; // how it goes out (the transition of the beat that removes it)
   moves: { frame: number; to: Pos }[];
   morphs: { frame: number; code: string }[];
   colors: { frame: number; color: Color }[];
-  fills: { frame: number; items: string[]; highlight?: number[] }[];
+  sets: { frame: number; state: Record<string, unknown> }[]; // `set` and `fill` patches, in order
+  pulses: number[];
   highlighted?: HighlightedCode[]; // [initial, ...morphs], filled by the CLI before render
 };
 export type FocusEvent = { frame: number; ids: string[] | null; lines: [number, number][] | null };
 export type CameraEvent = { frame: number; to: Pos; zoom: number };
-export type TraceEvent = { frame: number; ids: string[]; label?: string; icon?: string };
-export type BeatTiming = { start: number; frames: number; speechFrames: number; thinkFrames: number; say: string; audio: string | null };
+export type TraceEvent = { frame: number; ids: string[]; label?: string; icon?: string; step: number; color?: Color }; // step = frames per hop
+export type ChapterEvent = { frame: number; title: string };
+export type BeatTiming = { start: number; frames: number; speechFrames: number; thinkFrames: number; say: string; audio: string | null; chapter: string | null };
 export type Timeline = {
   fps: number;
   width: number;
   height: number;
   totalFrames: number;
+  pal: Palette;
   beats: BeatTiming[];
   tracks: Track[];
   focus: FocusEvent[];
   camera: CameraEvent[];
   traces: TraceEvent[];
+  chapters: ChapterEvent[];
 };
 
 const byFrame = (a: { frame: number }, b: { frame: number }) => a.frame - b.frame;
-const busy = (a: Action) => (a.wait ?? 0) + (a.op === "trace" ? a.ids.length * TRACE_STEP : 0) + TIMING.anim;
+const busy = (a: Action) => (a.wait ?? 0) + (a.op === "trace" ? a.ids.length * (a.speed ?? TRACE_STEP) : 0) + TIMING.anim;
 
 // Pure: validated spec + per-beat speech durations -> absolute frames for everything.
 export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
@@ -44,25 +51,36 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
   const focus: FocusEvent[] = [];
   const camera: CameraEvent[] = [];
   const traces: TraceEvent[] = [];
+  const chapters: ChapterEvent[] = [];
   const beats: BeatTiming[] = [];
   let start = 0;
+  let chapter: string | null = null;
 
   spec.beats.forEach((beat, i) => {
     const { file, sec } = voiced[i];
+    const style = beat.transition ?? "fade";
+    if (beat.chapter) chapters.push({ frame: start, title: (chapter = beat.chapter) });
+    const end = (t: Track, frame: number) => {
+      if (t.end !== null) return;
+      t.end = frame;
+      t.exit = style;
+    };
     for (const a of beat.do) {
       const frame = start + frames(a.wait ?? 0);
-      if (a.op === "add") tracks.set(a.id, { el: a, start: frame, end: null, moves: [], morphs: [], colors: [], fills: [] });
-      if (a.op === "remove") tracks.get(a.id)!.end = frame;
+      if (a.op === "add") tracks.set(a.id, { el: a, start: frame, end: null, enter: style, exit: "fade", moves: [], morphs: [], colors: [], sets: [], pulses: [] });
+      if (a.op === "remove") end(tracks.get(a.id)!, frame);
       if (a.op === "move") tracks.get(a.id)!.moves.push({ frame, to: a.to });
       if (a.op === "morph") tracks.get(a.id)!.morphs.push({ frame, code: a.code });
       if (a.op === "color") tracks.get(a.id)!.colors.push({ frame, color: a.color });
-      if (a.op === "fill") tracks.get(a.id)!.fills.push({ frame, items: a.items, highlight: a.highlight });
+      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight } });
+      if (a.op === "set") tracks.get(a.id)!.sets.push({ frame, state: a.state });
+      if (a.op === "pulse") tracks.get(a.id)!.pulses.push(frame);
       if (a.op === "focus") focus.push({ frame, ids: [a.id].flat(), lines: a.lines ?? null });
       if (a.op === "unfocus") focus.push({ frame, ids: null, lines: null });
-      if (a.op === "trace") traces.push({ frame, ids: a.ids, label: a.label, icon: a.icon });
+      if (a.op === "trace") traces.push({ frame, ids: a.ids, label: a.label, icon: a.icon, step: frames(a.speed ?? TRACE_STEP), color: a.color });
       if (a.op === "camera") camera.push({ frame, to: a.to ?? HOME.to, zoom: a.zoom ?? HOME.zoom });
       if (a.op === "clear") {
-        for (const t of tracks.values()) t.end ??= frame;
+        for (const t of tracks.values()) end(t, frame);
         focus.push({ frame, ids: null, lines: null });
         camera.push({ frame, ...HOME });
       }
@@ -70,7 +88,7 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
     const think = beat.think ?? 0;
     const settle = Math.max(0, ...beat.do.map(busy));
     const length = Math.max(sec ? sec + pad : 0, beat.hold ?? TIMING.minBeat, settle) + think;
-    beats.push({ start, frames: frames(length), speechFrames: frames(sec), thinkFrames: frames(think), say: beat.say ?? "", audio: file });
+    beats.push({ start, frames: frames(length), speechFrames: frames(sec), thinkFrames: frames(think), say: beat.say ?? "", audio: file, chapter });
     start += frames(length);
   });
 
@@ -78,10 +96,11 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
     t.moves.sort(byFrame);
     t.morphs.sort(byFrame);
     t.colors.sort(byFrame);
-    t.fills.sort(byFrame);
+    t.sets.sort(byFrame);
+    t.pulses.sort((a, b) => a - b);
   }
   for (const list of [focus, camera, traces]) list.sort(byFrame);
-  return { fps, width, height, totalFrames: start + frames(TIMING.tail), beats, tracks: [...tracks.values()], focus, camera, traces };
+  return { fps, width, height, totalFrames: start + frames(TIMING.tail), pal: themeOf(spec.theme), beats, tracks: [...tracks.values()], focus, camera, traces, chapters };
 }
 
 // Frame where beat i (0-based, like spec paths) has settled: its last frame, or mid-think so the

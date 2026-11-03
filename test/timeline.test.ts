@@ -45,8 +45,8 @@ test("semantic errors carry paths", () => {
   assert.deepEqual(parseSpec(bad).issues, [
     { path: "beats.0.do.1", message: "morph needs a code element, 'b' is box" },
     { path: "beats.1.do.0", message: "'ghost' is not on screen at this point" },
-    { path: "beats.1.do.1", message: "arrow end 'nope' is not a live box, icon, group or cells" },
-    { path: "beats.2.do.0", message: "'b' is still used by arrow 'a'; remove the arrow first" },
+    { path: "beats.1.do.1", message: "'nope' is not on screen at this point" },
+    { path: "beats.2.do.0", message: "'b' is still used by arrow 'a'; remove that first" },
     { path: "beats.2.do.1", message: "id 'b' already used; ids are unique for the whole video" },
   ]);
 });
@@ -86,7 +86,7 @@ test("trace, think, camera and audience shape the timeline", () => {
   // beat 1: trace wait 1 + 1 step 1.0 + anim 1.2 = 3.2s beats 1s speech + novice pad 1.2
   // beat 2: 1 + 1.2 pad + 3 think = 5.2s; beat 3: 2s minimum
   assert.deepEqual(t.beats.map((b) => [b.frames, b.thinkFrames]), [[96, 0], [156, 90], [60, 0]]);
-  assert.deepEqual(t.traces, [{ frame: 30, ids: ["q"], label: undefined, icon: undefined }]);
+  assert.deepEqual(t.traces, [{ frame: 30, ids: ["q"], label: undefined, icon: undefined, step: 30, color: undefined }]);
   assert.deepEqual(t.focus[0].ids, ["api", "db"]);
   assert.deepEqual(t.camera.map((c) => [c.frame, c.zoom]), [[96, 2], [252, 1]]);
   // think beat still lands mid-window so the question overlay is fully visible
@@ -98,7 +98,7 @@ test("trace and multi-focus are checked", () => {
   bad.beats[0].do[3].ids = ["api"];
   bad.beats[1].do[0] = { op: "focus", id: ["api", "db"], lines: [[1, 1]] };
   assert.deepEqual(parseSpec(bad).issues, [
-    { path: "beats.0.do.3", message: "trace step 'api' is not a live arrow" },
+    { path: "beats.0.do.3.ids.0", message: "trace step 'api' is not a live arrow" },
     { path: "beats.1.do.0", message: "focus lines needs exactly one code element" },
   ]);
 });
@@ -141,12 +141,12 @@ test("lint keeps videos system-level and visual", () => {
     title: "t",
     beats: [
       { say: "The OrderService talks to the database.", do: [
-        { op: "add", type: "box", id: "m", label: "Order service that talks to the database", icon: "refresh-cw" },
-        { op: "add", type: "code", id: "c1", lang: "ts", code: long },
+        { op: "add", type: "box", id: "m", label: "Order service that talks to the database", icon: "refresh-cw", at: [2, 2] },
+        { op: "add", type: "code", id: "c1", lang: "ts", code: long, at: [8, 3] },
       ] },
-      { do: [{ op: "morph", id: "c1", code: "a" }, { op: "add", type: "text", id: "t1", text: "a" }] },
-      { do: [{ op: "add", type: "code", id: "c2", lang: "ts", code: "b" }, { op: "add", type: "text", id: "t2", text: "b" }] },
-      { do: [{ op: "add", type: "text", id: "t3", text: "c" }, { op: "add", type: "text", id: "t4", text: "d" }] },
+      { do: [{ op: "morph", id: "c1", code: "a" }, { op: "add", type: "text", id: "t1", text: "a", at: [2, 7] }] },
+      { do: [{ op: "add", type: "code", id: "c2", lang: "ts", code: "b", at: [13, 2] }, { op: "add", type: "text", id: "t2", text: "b", at: [5, 7] }] },
+      { do: [{ op: "add", type: "text", id: "t3", text: "c", at: [10, 7] }, { op: "add", type: "text", id: "t4", text: "d", at: [14, 7] }] },
     ],
   }).spec!;
   assert.deepEqual(lint(spec, 60), [
@@ -187,7 +187,7 @@ test("color and fill changes become timed track events and are checked", () => {
   };
   const t = buildTimeline(parseSpec(spec).spec!, [{ file: null, sec: 0 }, { file: null, sec: 0 }]);
   assert.deepEqual(t.tracks[0].colors, [{ frame: 60 + 15, color: "bad" }]);
-  assert.deepEqual(t.tracks[1].fills, [{ frame: 60 + 30, items: ["1042", "x"], highlight: [0] }]);
+  assert.deepEqual(t.tracks[1].sets, [{ frame: 60 + 30, state: { items: ["1042", "x"], highlight: [0] } }]);
   const bad = structuredClone(spec) as any;
   bad.beats[0].do[1].highlight = [2];
   bad.beats[0].do.push({ op: "add", type: "code", id: "c", lang: "ts", code: "x" });

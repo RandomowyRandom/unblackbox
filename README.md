@@ -26,6 +26,7 @@ https://github.com/user-attachments/assets/c6c4b0ef-af69-4b54-b192-62066df75484
 Reading a codebase tells you what each file does. It rarely tells you how the parts work together. unblackbox gives a newcomer that picture fast:
 
 - **Systems, not functions.** Components with icons inside system boundaries, labelled arrows, packets that move along them.
+- **Ideas you can see.** 50 purpose-built components (lock, timer, state machine, cache, cluster, sequence diagram, charts...) so a concept is shown, not described.
 - **One real example, end to end.** "Ana buys two mugs, order 1042", followed from the click to the receipt, through the failure and the fix.
 - **Built on learning research.** About four things on screen at a time, problem before solution, one pause-and-predict question, no walls of text. `validate` checks these rules for you.
 - **Fast.** The agent checks its work on a single contact-sheet image in about 5 seconds and renders only once.
@@ -149,7 +150,7 @@ A video is a list of beats. Each beat pairs one sentence with what appears on sc
 }
 ```
 
-Elements: `box`, `icon`, `group`, `cells`, `arrow`, `text`, `code`. Actions: `add`, `remove`, `move`, `trace`, `focus`, `camera`, `color`, `fill`, `morph`, `clear`. The full reference is [`AGENTS.md`](AGENTS.md) (also `unblackbox guide`), and `unblackbox schema` prints the exact JSON Schema.
+Besides boxes, icons, groups and arrows there are 50 components that each show one idea directly: a `lock` that closes, a `timer` that drains, a `states` machine, a `cluster` losing a node, a `kv` cache, a `sequence` handshake, `bars` and more. `set` changes their state and it animates. Actions: `add`, `remove`, `move`, `trace`, `focus`, `camera`, `color`, `set`, `fill`, `pulse`, `morph`, `clear`. Layout with `place` next to other elements, pick a `theme` (dim, light, contrast), mark sections with `chapter`. The format is strict: a misspelled key is an error with its path. The full reference is [`AGENTS.md`](AGENTS.md) (also `unblackbox guide`); `unblackbox components` lists every type and `unblackbox schema` prints the exact JSON Schema.
 
 ## Commands
 
@@ -161,6 +162,7 @@ Elements: `box`, `icon`, `group`, `cells`, `arrow`, `text`, `code`. Actions: `ad
 | `unblackbox render spec.json` | MP4 + SRT (`--beat 5,6` for a clip, `--out x.gif` for a GIF preview) |
 | `unblackbox game topic.game.json` | build an interactive playground folder (~20 s) |
 | `unblackbox play out/topic-play` | open it |
+| `unblackbox components` | every element type; `components <type>` for its fields, `--sheet` to see them all |
 | `unblackbox voices` | list Kokoro voices |
 
 Every command prints JSON to stdout, so agents can read the result.

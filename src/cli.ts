@@ -9,8 +9,11 @@ import { bundle } from "@remotion/bundler";
 import { openBrowser, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { highlight } from "codehike/code";
 import { z } from "zod";
+import { DEFS, defOf } from "./components/index.ts";
+import { gallery } from "./gallery.ts";
 import { Game, linesOf, parseGame, toGamePaths, walkthrough, type Bundle } from "./game.ts";
-import { lint, parseSpec, Spec, type Issue } from "./spec.ts";
+import { lint, parseSpec, Spec, Theme, type Issue } from "./spec.ts";
+import { CODE_THEME } from "./themes.ts";
 import { buildTimeline, settledFrame, timing, toSrt, type Timeline } from "./timeline.ts";
 import { providers, silentVoices, unknownProvider, voiceBeats } from "./tts.ts";
 
@@ -29,13 +32,16 @@ const USAGE = `unblackbox <command> [spec.json] [options]
   play <folder>             open a built playground
   voices [--tts name]       list voices of a TTS provider
   schema game               print the playground JSON Schema
+  components                list every element type with the concept it shows
+  components <type>         its fields, what \`set\` can change, and an example
+  components --sheet        contact sheet of every example (added, then set); [--family F]
 
   --out <path>              render: video file; still and game: folder (default out/)
   --tts <name>              override spec.voice.provider (silent, ${Object.keys(providers).join(", ")})
+  --theme <preset[/accent]> override spec.theme, e.g. light or contrast/teal
 
 stdout is JSON, progress goes to stderr, exit 1 on failure.`;
 
-const CODE_THEME = "github-dark-dimmed"; // palette in src/video/theme.ts matches it
 const root = path.dirname(fileURLToPath(import.meta.url));
 const GUIDE = [path.join(root, "..", "AGENTS.md"), path.join(root, "..", "skills", "unblackbox", "references", "rules.md")];
 const cacheDir = path.join(root, "..", ".unblackbox", "cache"); // next to the tool, not the cwd, so the cache is always found
@@ -59,9 +65,15 @@ async function readJson(file: string | undefined): Promise<unknown> {
   }
 }
 
-// --tts override, then fail early on a provider nobody implements.
-function pickVoice<T extends { voice: { provider: string } }>(doc: T, tts: string | undefined): T {
+// --tts and --theme overrides, then fail early on a provider nobody implements.
+function pickVoice<T extends { voice: { provider: string }; theme: Theme }>(doc: T, tts: string | undefined, theme?: string): T {
   if (tts) doc.voice.provider = tts;
+  if (theme) {
+    const [preset, accent] = theme.split("/");
+    const r = Theme.safeParse({ preset, accent: accent ?? doc.theme.accent });
+    if (!r.success) throw new Error(`--theme takes dim, light or contrast, optionally /blue, /violet, /teal or /amber`);
+    doc.theme = r.data;
+  }
   const bad = unknownProvider(doc.voice.provider);
   if (bad) throw new SpecError([{ path: "voice.provider", message: bad }]);
   return doc;
@@ -75,11 +87,12 @@ function beatList(spec: Spec, arg: string | undefined): number[] {
   return beats;
 }
 
-async function load(file: string | undefined, tts: string | undefined): Promise<Spec> {
+async function load(file: string | undefined, tts: string | undefined, theme?: string): Promise<Spec> {
   const { spec, issues } = parseSpec(await readJson(file));
   if (!spec) throw new SpecError(issues);
-  return pickVoice(spec, tts);
+  return pickVoice(spec, tts, theme);
 }
+
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 const PLAY = path.join(root, "..", "play");
@@ -126,7 +139,8 @@ async function prepare(spec: Spec): Promise<Timeline> {
   for (const tr of t.tracks) {
     if (tr.el.type !== "code") continue;
     const lang = tr.el.lang;
-    tr.highlighted = await Promise.all([tr.el.code, ...tr.morphs.map((m) => m.code)].map((value) => highlight({ value, lang, meta: "" }, CODE_THEME)));
+    const theme = CODE_THEME[spec.theme.preset];
+    tr.highlighted = await Promise.all([tr.el.code, ...tr.morphs.map((m) => m.code)].map((value) => highlight({ value, lang, meta: "" }, theme)));
   }
   return t;
 }
@@ -147,13 +161,37 @@ const select = async (serveUrl: string, id: "main" | "sheet", inputProps: Record
 async function main() {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { out: { type: "string" }, beat: { type: "string" }, at: { type: "string" }, tts: { type: "string" }, help: { type: "boolean", short: "h" } },
+    options: {
+      out: { type: "string" }, beat: { type: "string" }, at: { type: "string" }, tts: { type: "string" }, theme: { type: "string" },
+      sheet: { type: "boolean" }, family: { type: "string" }, help: { type: "boolean", short: "h" },
+    },
   });
   const [cmd, file] = positionals;
 
   if (cmd === "guide") return console.log((await Promise.all(GUIDE.map((f) => readFile(f, "utf8")))).join("\n\n"));
   if (cmd === "schema") return print(z.toJSONSchema(file === "game" ? Game : Spec, { io: "input" }));
   if (cmd === "game") return print(await buildGame(file, values.out, values.tts));
+  if (cmd === "components" && values.sheet) {
+    // through parseSpec like any spec, so the gallery also proves every example is valid
+    const raw = gallery(values.family);
+    const { spec, issues } = parseSpec(raw);
+    if (!spec) throw new SpecError(issues);
+    pickVoice(spec, "silent", values.theme);
+    const t = await prepare(spec);
+    const dir = path.resolve(values.out ?? "out");
+    await mkdir(dir, { recursive: true });
+    const name = `components${values.family ? `-${values.family}` : ""}${values.theme ? `-${values.theme.replace("/", "-")}` : ""}`;
+    const json = path.join(dir, `${name}.json`); // a normal spec: \`still\` it with --beat N or --at S for a closer look
+    await writeFile(json, JSON.stringify({ ...raw, theme: spec.theme }, null, 2));
+    const output = path.join(dir, `${name}-sheet.png`);
+    await renderStill({ ...(await select(await serve(), "sheet", { t, frames: t.beats.map((_, b) => settledFrame(t, b)), labels: spec.beats.map((b, i) => `${i} ${b.chapter}`) })), output, frame: 0 });
+    return print({ ok: true, out: [output], spec: json, warnings: lint(spec, 0, 99) });
+  }
+  if (cmd === "components") {
+    if (!file) return print(DEFS.map((d) => ({ type: d.type, family: d.family, summary: d.summary, set: d.state ?? [] })));
+    const d = defOf(file);
+    return print({ type: d.type, family: d.family, summary: d.summary, fields: z.toJSONSchema(d.schema, { io: "input" }), set: z.toJSONSchema(d.setSchema, { io: "input" }), example: d.example });
+  }
   if (cmd === "play") {
     const dir = path.resolve(file ?? ".");
     const exe = (await readdir(dir, { withFileTypes: true })).find((e) => e.isFile() && path.extname(e.name) === EXE)?.name;
@@ -168,13 +206,13 @@ async function main() {
     return print({ provider: name, voices: await providers[name].voices() });
   }
   if (cmd === "validate") {
-    const spec = await load(file, values.tts);
+    const spec = await load(file, values.tts, values.theme);
     const t = buildTimeline(spec, silentVoices(spec));
     const estimatedSec = Math.round(t.totalFrames / t.fps);
     return print({ ok: true, beats: spec.beats.length, estimatedSec, warnings: lint(spec, estimatedSec) });
   }
   if (cmd === "still") {
-    const spec = await load(file, values.tts);
+    const spec = await load(file, values.tts, values.theme);
     const beats = beatList(spec, values.beat);
     const at = values.at === undefined ? null : Number(values.at);
     if (at !== null && !(at >= 0)) throw new Error("--at must be seconds >= 0 from the beat start");
@@ -205,7 +243,7 @@ async function main() {
     return print({ ok: true, out, timing: timing(t) });
   }
   if (cmd === "render") {
-    const spec = await load(file, values.tts);
+    const spec = await load(file, values.tts, values.theme);
     const t = await prepare(spec);
     let out = path.resolve(values.out ?? path.join("out", `${path.parse(file).name}.mp4`));
     if (!path.extname(out)) out += ".mp4"; // the h264 encoder refuses a path without a container extension
