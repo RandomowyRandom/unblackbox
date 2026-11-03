@@ -1,16 +1,16 @@
 # What the finished video must be
 
-The viewer should come away with a picture of **how the system works**: which parts it has, what each part is for, and how they work together. They should not come away with the details of a function. These rules come from research on how people learn complex systems (`reports/Understanding code architecture quickly.md`) and from viewer feedback: earlier videos were too fast, too dense, too wordy and too low-level. `validate` checks the mechanical rules; the rest are on you.
+The viewer should come away with a picture of **how the system works**: which parts it has, what each part is for, and how they work together. They should not come away with the details of a function. These rules come from research on how people learn complex systems (`reports/Understanding code architecture quickly.md`) and from viewer feedback: earlier videos were too fast, too dense, too wordy and too low-level, and they jumped between too many scenes. `validate` checks the mechanical rules; the rest are on you.
 
 ## Level: systems and components, not functions
 
 1. **Show parts, not code.** The cast is systems (`group`), key components and classes (`box` with an icon), actors (`icon`), the data that moves between them (`trace` packets) and the ideas that make the design work, each drawn with the component that shows it (see "Show the idea" below). Name a class only if it is a key component. Never narrate function names, variables or line-level logic.
 2. **Code is rare.** At most 2 or 3 beats, each a glimpse of a key type or interface (8 lines or fewer) that makes an idea concrete. Most system videos need none.
-3. **One question.** The first beat states it ("what happens between pressing Pay and the receipt arriving?"). 2 to 3 minutes, about 14 to 18 beats.
+3. **One question.** The first beat states it ("what happens between pressing Pay and the receipt arriving?"). 2 to 3 minutes, about 12 to 15 beats, and about 6 to 10 things on the board by the end. Leave out what the question does not need; a second question is a second video.
 
 ## Structure
 
-4. **The big picture first.** Open with the systems as groups, with their main components inside, before anything moves. At most about 4 named things per view (5 to 6 for experts); for more, `camera` zoom into one system or `clear` to a new view.
+4. **One scene that grows.** The whole video is one board. It starts nearly empty (the actor and the first part) and grows as the story reaches each part, so the last frame is the whole system and every frame before it is part of it. Change the board, never swap it: add the next part, draw an arrow when something first flows, `set` a component's state, `color` what fails or recovers, `move` things to make room, `camera` zoom into one part for detail and back out, `emphasis: "quiet"` what is now background. Do not `clear` (at most once, for a genuinely new act) and do not remove something just to show a similar thing elsewhere. A viewer should be able to say what changed between any two beats in a few words.
 5. **One real example, end to end.** Pick one concrete, real-world case and follow it from the trigger to the visible result through every component: a named actor, a specific thing, real-looking data ("Ana buys two mugs, order 1042"; "rider 88 books a trip downtown"; "Sam resets a forgotten password"). Take it from the code: a real request type, a test fixture, seed data, a log line. Name it in the first beats, put it on the packet (`trace` with `label: "order 1042"` and an `icon`) and in the data it lands in (`fill` a queue slot with `"1042"`), and narrate what each part does with *that* case. Keep the same case for the trap and the fix ("the worker crashes while sending Ana's receipt"), so the viewer follows one story instead of abstractions.
 6. **The why, from a real source.** Say why it is built this way, using a reason from docs, an ADR, a commit, a PR or a comment, and list it in `sources`. If no source gives a reason, say it is unknown. Never invent one.
 7. **Problem before solution.** Show the pain, then the fix, then name the idea.
@@ -59,8 +59,8 @@ Every abstract idea in the story gets the component that looks like it. A lock i
 
 ## Calm pacing
 
-- One idea per beat: one or two short sentences, under ~18 words. Fewer, slower beats beat many quick ones.
-- Change one thing at a time. Stagger additions with `wait` and let each settle before the next.
+- One idea per beat: one short sentence or two, under ~16 words. Fewer, slower beats beat many quick ones; leave quiet between lines (about 90 spoken words a minute, under 4 new things a minute).
+- Change one or two things per beat, never more than three. Stagger them with `wait` (a second or more apart) and let each settle before the next.
 - Put each visual change in the beat whose sentence names it, and `focus` what you are talking about.
 - Talk like a colleague: "you", "we", plain words. Make it speakable: numbers as words, no code names, symbols as their meaning.
 

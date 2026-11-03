@@ -3,7 +3,7 @@ import { AUDIENCE, TRACE_STEP, type Action, type Add, type Color, type Pos, type
 import { themeOf, type Palette } from "./themes.ts";
 
 // Seconds. anim = how long every transition takes (calm, not snappy). Breath after speech comes from AUDIENCE.
-export const TIMING = { minBeat: 2, anim: 1.2, tail: 1.5 };
+export const TIMING = { minBeat: 3, anim: 1.2, tail: 2 };
 export const HOME: { to: Pos; zoom: number } = { to: [8, 4.5], zoom: 1 };
 
 export type Voiced = { file: string | null; sec: number };

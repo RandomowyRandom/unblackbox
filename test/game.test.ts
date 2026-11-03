@@ -36,8 +36,8 @@ test("appendLine starts each line where the player acted", () => {
   live = appendLine(live, game.intro, { file: "intro.wav", sec: 3 }, 0);
   live = appendLine(live, game.inspect.queue, { file: "q.wav", sec: 2 }, 4);
   const t = buildTimeline({ ...walkthrough(game), beats: live.beats }, live.voiced);
-  // board 2 s, intro 3 + 1 s quiet, 4 s idle gap, then the queue line
-  assert.deepEqual(t.beats.map((b) => b.start), [0, 60, 180, 300]);
+  // board 3 s, intro 3 + 1.5 s quiet, 4 s idle gap, then the queue line
+  assert.deepEqual(t.beats.map((b) => b.start), [0, 90, 225, 345]);
   assert.equal(t.beats[3].audio, "q.wav");
 });
 

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { lint, parseSpec } from "../src/spec.ts";
+import { lint, pacing, parseSpec, type Spec } from "../src/spec.ts";
 import { buildTimeline, settledFrame, toSrt } from "../src/timeline.ts";
+
+// these fixtures test other checks, so they leave out the pacing advice (tested on its own below)
+const withoutPacing = (spec: Spec, sec: number) => {
+  const p = new Set(pacing(spec, sec).map((i) => i.path + i.message));
+  return lint(spec, sec).filter((i) => !p.has(i.path + i.message));
+};
 
 const code = "const a = 1\nconst b = 2";
 const base = {
@@ -23,14 +29,14 @@ test("valid spec fills defaults", () => {
 test("timeline turns seconds into frames", () => {
   const { spec } = parseSpec(base);
   const t = buildTimeline(spec!, [{ file: "a.wav", sec: 2 }, { file: null, sec: 0.2 }, { file: null, sec: 0 }]);
-  // beat 1: 2s speech + 1.0 pad; beat 2: focus wait 1 + 1.2 anim beats 1.2 speech+pad and 2 min; beat 3: hold 2
-  assert.deepEqual(t.beats.map((b) => [b.start, b.frames]), [[0, 90], [90, 66], [156, 60]]);
-  assert.equal(t.totalFrames, 216 + 45);
-  assert.deepEqual(t.focus.map((f) => f.frame), [120, 156]);
+  // beat 1: 2s speech + 1.5 pad; beat 2: the 3 s minimum beats focus wait 1 + 1.2 anim and 0.2 speech + pad; beat 3: hold 2
+  assert.deepEqual(t.beats.map((b) => [b.start, b.frames]), [[0, 105], [105, 90], [195, 60]]);
+  assert.equal(t.totalFrames, 255 + 60);
+  assert.deepEqual(t.focus.map((f) => f.frame), [135, 195]);
   const [c] = t.tracks;
-  assert.deepEqual([c.start, c.end, c.morphs[0].frame], [0, 156, 90]);
-  assert.equal(settledFrame(t, 1), 155);
-  assert.equal(toSrt(t), "1\n00:00:00,000 --> 00:00:02,000\none\n\n2\n00:00:03,000 --> 00:00:03,200\ntwo\n");
+  assert.deepEqual([c.start, c.end, c.morphs[0].frame], [0, 195, 105]);
+  assert.equal(settledFrame(t, 1), 194);
+  assert.equal(toSrt(t), "1\n00:00:00,000 --> 00:00:02,000\none\n\n2\n00:00:03,500 --> 00:00:03,700\ntwo\n");
 });
 
 test("semantic errors carry paths", () => {
@@ -83,14 +89,14 @@ const flow = {
 test("trace, think, camera and audience shape the timeline", () => {
   const { spec } = parseSpec(flow);
   const t = buildTimeline(spec!, [{ file: null, sec: 1 }, { file: null, sec: 1 }, { file: null, sec: 0 }]);
-  // beat 1: trace wait 1 + 1 step 1.0 + anim 1.2 = 3.2s beats 1s speech + novice pad 1.2
-  // beat 2: 1 + 1.2 pad + 3 think = 5.2s; beat 3: 2s minimum
-  assert.deepEqual(t.beats.map((b) => [b.frames, b.thinkFrames]), [[96, 0], [156, 90], [60, 0]]);
+  // beat 1: trace wait 1 + 1 step 1.0 + anim 1.2 = 3.2s beats 1s speech + novice pad 1.8
+  // beat 2: 3 s minimum (beats 1 + 1.8 pad) + 3 think = 6s; beat 3: 3s minimum
+  assert.deepEqual(t.beats.map((b) => [b.frames, b.thinkFrames]), [[96, 0], [180, 90], [90, 0]]);
   assert.deepEqual(t.traces, [{ frame: 30, ids: ["q"], label: undefined, icon: undefined, step: 30, color: undefined }]);
   assert.deepEqual(t.focus[0].ids, ["api", "db"]);
-  assert.deepEqual(t.camera.map((c) => [c.frame, c.zoom]), [[96, 2], [252, 1]]);
+  assert.deepEqual(t.camera.map((c) => [c.frame, c.zoom]), [[96, 2], [276, 1]]);
   // think beat still lands mid-window so the question overlay is fully visible
-  assert.equal(settledFrame(t, 1), 96 + 156 - 1 - 45);
+  assert.equal(settledFrame(t, 1), 96 + 180 - 1 - 45);
 });
 
 test("trace and multi-focus are checked", () => {
@@ -121,7 +127,7 @@ test("lint flags research-backed problems", () => {
       { say: "Here we return age greater than max age ms.", think: 2, do: [] },
     ],
   }).spec!;
-  assert.deepEqual(lint(spec, 400), [
+  assert.deepEqual(withoutPacing(spec, 400), [
     { path: "beats.0.do.4", message: "more than 4 elements on screen; split the scene or zoom" },
     { path: "beats.0.do.5", message: "arrow has no label; name what flows along it" },
     { path: "beats.0.do.7", message: "trace jumps from 'x' to 'y'; each arrow should start where the last ended" },
@@ -149,7 +155,7 @@ test("lint keeps videos system-level and visual", () => {
       { do: [{ op: "add", type: "text", id: "t3", text: "c", at: [10, 7] }, { op: "add", type: "text", id: "t4", text: "d", at: [14, 7] }] },
     ],
   }).spec!;
-  assert.deepEqual(lint(spec, 60), [
+  assert.deepEqual(withoutPacing(spec, 60), [
     { path: "beats.0.do.0", message: "7 words on screen; keep labels to 5, say the rest" },
     { path: "beats.0.do.1", message: "10 lines of code; show a key type or interface in 8 or fewer, not an implementation" },
     { path: "beats.0.say", message: "'OrderService' is spoken before it is on screen" },
@@ -186,8 +192,8 @@ test("color and fill changes become timed track events and are checked", () => {
     ],
   };
   const t = buildTimeline(parseSpec(spec).spec!, [{ file: null, sec: 0 }, { file: null, sec: 0 }]);
-  assert.deepEqual(t.tracks[0].colors, [{ frame: 60 + 15, color: "bad" }]);
-  assert.deepEqual(t.tracks[1].sets, [{ frame: 60 + 30, state: { items: ["1042", "x"], highlight: [0] } }]);
+  assert.deepEqual(t.tracks[0].colors, [{ frame: 90 + 15, color: "bad" }]);
+  assert.deepEqual(t.tracks[1].sets, [{ frame: 90 + 30, state: { items: ["1042", "x"], highlight: [0] } }]);
   const bad = structuredClone(spec) as any;
   bad.beats[0].do[1].highlight = [2];
   bad.beats[0].do.push({ op: "add", type: "code", id: "c", lang: "ts", code: "x" });
@@ -199,4 +205,25 @@ test("color and fill changes become timed track events and are checked", () => {
     { path: "beats.1.do.3", message: "fill has 1 slots; 'q' has 2" },
     { path: "beats.1.do.4", message: "fill needs a cells element, 'a' is box" },
   ]);
+});
+
+test("pacing wants one scene that grows slowly", () => {
+  const box = (id: string, x: number, wait?: number) => ({ op: "add", type: "box", id, label: id, icon: "server", at: [x, 4.5], wait });
+  const spec = parseSpec({
+    title: "t",
+    beats: [
+      { say: "one", do: [box("a", 2), box("b", 5), box("c", 8), box("d", 11)] },
+      { say: "two", do: [box("e", 14), { op: "remove", id: "d", wait: 1 }] },
+      { say: "three", do: [{ op: "clear" }, box("f", 2)] },
+      { say: "four", do: [{ op: "clear" }, box("g", 2), box("h", 6, 0.5)] },
+    ],
+  }).spec!;
+  assert.deepEqual(pacing(spec, 60), [
+    { path: "beats.0", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
+    { path: "beats.1.do.1", message: "'d' leaves right after it came; keep it on the board and change it (set, color, move) instead" },
+    { path: "beats.3", message: "changes land less than 0.8 s apart; stagger them with wait so the eye can follow each" },
+    { path: "beats.3.do.0", message: "2 scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once" },
+    { path: "beats", message: "8 new things in 60 s (8 a minute); aim under 4: keep one board and change what is on it instead of bringing in new things" },
+  ]);
+  assert.deepEqual(lint(spec, 0).filter((i) => /a minute|scene changes|in one beat/.test(i.message)), []); // playground walkthroughs skip it
 });

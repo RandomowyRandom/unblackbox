@@ -21,6 +21,8 @@ Open source files only to confirm how parts connect and to check claims; you do 
 
 ## 2. Write the spec
 
+First design the final board: the one picture that is on screen at the end, with 6 to 10 things (actors, components, the ideas' components) laid out along the flow so arrows do not cross. Every beat is a step towards it or a change on it: a part appears, an arrow is drawn, a state changes, something turns `bad` and later `good`, the camera zooms in and back out. Plan the beats as that sequence of small changes before writing any JSON.
+
 Write `<topic>.json` following the rules from `unblackbox guide`. Copy the structure of `examples/queue-decoupling.json`: systems as groups, components as boxes with icons, actors as icons, one real case ("order 1042") traced end to end as a labelled packet and kept through the trap and the fix, little text. Show each idea with its component (`unblackbox components <type>` prints its fields, what `set` can change, and an example) and change it with `set` as the story moves. Lay things out with `place` instead of guessing coordinates. Put the files and commits you used in `sources`.
 
 ## 3. Verify
@@ -30,7 +32,7 @@ unblackbox validate topic.json
 unblackbox still topic.json --tts silent
 ```
 
-`validate` (under 1 s) must report no errors. Fix its warnings too; they flag videos that are too dense, too low-level or too wordy. `still` (about 5 s) writes one contact sheet of every beat. Look at it once and fix: overlaps, text off screen, crossing arrows, crowded beats, and any beat that is mostly words instead of a picture. Then run both again. Use `--beat 3,7` for a full-size look at specific beats.
+`validate` (under 1 s) must report no errors. Fix its warnings too; they flag videos that are too dense, too low-level or too wordy. `still` (about 5 s) writes one contact sheet of every beat. Look at it once and fix: overlaps, text off screen, crossing arrows, crowded beats, and any beat that is mostly words instead of a picture. Read it like a flip book: each cell should be the previous one with one or two differences, and the last cell the whole system. Then run both again. Use `--beat 3,7` for a full-size look at specific beats.
 
 ## 4. Render
 
