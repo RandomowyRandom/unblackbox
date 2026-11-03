@@ -1,16 +1,17 @@
 import React from "react";
 import { interpolate, interpolateColors } from "remotion";
-import { CY, cycleLayout, eventRows, LN, lanesLayout, PL, pipelineLayout, RING, SEQ, sequenceLayout, timelineLayout, TL, type time as defs } from "../../components/time.ts";
+import {
+  CY, cycleLayout, eventLabelW, eventRows, fmt, LN, lanesLayout, PL, pipelineLayout, RING, SEQ, sequenceLayout, tagX, timelineLayout, TL, type time as defs,
+} from "../../components/time.ts";
 import type { Pt, TypesOf } from "../../components/registry.ts";
 import type { Palette } from "../../themes.ts";
-import { alpha, Caption, clamp, dashed, iconFor, mono, partial, sans, svgPath, Text, type Renderers } from "../kit.tsx";
+import { along, alpha, Caption, clamp, dashed, iconFor, mono, partial, sans, svgPath, Text, type Renderers } from "../kit.tsx";
 
 type Box = { u: number; w: number; h: number };
 type Align = "start" | "center" | "end";
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 // color cross-fade; p is clamped since the spring can overshoot
 const mix = (a: string, b: string, p: number) => interpolateColors(Math.min(1, Math.max(0, p)), [0, 1], [a, b]);
-const fmt = (v: number, unit?: string) => `${Math.round(v * 10) / 10}${unit ? ` ${unit}` : ""}`;
 
 // A w x h board: an svg layer whose origin is the element center (grid offsets * u), and HTML labels on top.
 const Board = ({ w, h, svg, children }: { w: number; h: number; svg: React.ReactNode; children?: React.ReactNode }) => (
@@ -39,11 +40,11 @@ function byId<T extends { id: string }>(prev: readonly T[], cur: readonly T[], p
   const kept = cur.map((item) => { const from = prev.find((x) => x.id === item.id); return { item, from: from ?? item, o: from ? 1 : p, gone: false }; });
   return [...kept, ...prev.filter((x) => !cur.some((c) => c.id === x.id)).map((item) => ({ item, from: item, o: 1 - p, gone: true }))];
 }
-// A vertical "now" line with its time on a tag at the top.
-const Now = ({ u, x, y0, y1, text, color, opacity }: { u: number; x: number; y0: number; y1: number; text: string; color: string; opacity: number }) => (
+// A vertical "now" line with its time on a tag at the top, the tag kept inside the footprint (half-width hw).
+const Now = ({ u, x, y0, y1, hw, text, color, opacity }: { u: number; x: number; y0: number; y1: number; hw: number; text: string; color: string; opacity: number }) => (
   <g opacity={opacity}>
     <line x1={x * u} x2={x * u} y1={(y0 + 0.17) * u} y2={y1 * u} stroke={color} strokeWidth={0.03 * u} strokeLinecap="round" />
-    <Svgtext u={u} x={x} y={y0} color={color} isMono>{text}</Svgtext>
+    <Svgtext u={u} x={tagX(x, text, hw)} y={y0} color={color} isMono>{text}</Svgtext>
   </g>
 );
 
@@ -66,7 +67,9 @@ export const time: Renderers<TypesOf<typeof defs>> = {
       const past = now === undefined ? 1 : interpolate(now - item.at, [-eps, 0], [0, 1], clamp);
       return { e: item, x, row, o, past };
     });
-    const labelX = (x: number) => Math.min(L.W / 2 - 1, Math.max(-L.W / 2 + 1, x));
+    const [roomPrev, roomNow] = [eventLabelW(change.prev), eventLabelW(el)];
+    const room = (id: string) => roomNow.get(id) ?? roomPrev.get(id)!;
+    const labelX = (x: number, lw: number) => Math.min(L.W / 2 - lw / 2, Math.max(-L.W / 2 + lw / 2, x));
     return (
       <Board w={w} h={h} svg={<>
         {(el.ranges ?? []).map((r, i) => {
@@ -75,9 +78,9 @@ export const time: Renderers<TypesOf<typeof defs>> = {
             fill={alpha(c, 0.18)} stroke={c} strokeWidth={0.025 * u} strokeDasharray={dashed(r.color === "bad", u)} />;
         })}
         <line x1={L.x0 * u} x2={L.x1 * u} y1={L.axisY * u} y2={L.axisY * u} stroke={pal.muted} strokeWidth={0.03 * u} strokeDasharray={dashed(bad, u)} />
-        <Svgtext u={u} x={L.x0 - 0.3} y={L.axisY} color={pal.muted} anchor="end" isMono>{fmt(el.span[0], el.unit)}</Svgtext>
-        <Svgtext u={u} x={L.x1 + 0.3} y={L.axisY} color={pal.muted} anchor="start" isMono>{fmt(el.span[1], el.unit)}</Svgtext>
-        {now !== undefined && <Now u={u} x={L.x(now)} y0={L.tagY} y1={L.axisY + 0.24} text={`now ${fmt(Math.round(now), el.unit)}`} color={color}
+        <Svgtext u={u} x={L.x0 - TL.spanGap} y={L.axisY} color={pal.muted} anchor="end" isMono>{fmt(el.span[0], el.unit)}</Svgtext>
+        <Svgtext u={u} x={L.x1 + TL.spanGap} y={L.axisY} color={pal.muted} anchor="start" isMono>{fmt(el.span[1], el.unit)}</Svgtext>
+        {now !== undefined && <Now u={u} x={L.x(now)} y0={L.tagY} y1={L.axisY + 0.24} hw={L.W / 2} text={`now ${fmt(Math.round(now), el.unit)}`} color={color}
           opacity={change.prev.cursor === undefined ? change.p : 1} />}
         {events.map(({ e, x, row, o, past }) => {
           const Icon = e.icon ? iconFor(e.icon) : null;
@@ -96,7 +99,7 @@ export const time: Renderers<TypesOf<typeof defs>> = {
           <Text key={i} u={u} size={0.2} color={pal.text} style={spot(b, (L.x(r.from) + L.x(r.to)) / 2, L.rangeY(i), Math.max(0.2, L.x(r.to) - L.x(r.from) - 0.1))}>{r.label}</Text>
         ))}
         {events.map(({ e, x, row, o }) => (
-          <Text key={e.id} u={u} size={0.24} color={pal.text} style={{ ...spot(b, labelX(x), L.labelY(row), 2), opacity: o }}>{e.label}</Text>
+          <Text key={e.id} u={u} size={0.24} color={pal.text} style={{ ...spot(b, labelX(x, room(e.id)), L.labelY(row), room(e.id)), opacity: o }}>{e.label}</Text>
         ))}
       </Board>
     );
@@ -139,8 +142,13 @@ export const time: Renderers<TypesOf<typeof defs>> = {
         })}
         {msgs.map(({ m, k, r }) => {
           const [a, z] = S.line(m, k);
-          return <Text key={m.id} u={u} size={0.22} color={m.reply ? pal.muted : pal.text}
-            style={{ ...spot(b, (a[0] + z[0]) / 2, S.rowY(k) - 0.22, Math.abs(z[0] - a[0]) - 0.1), opacity: r }}>{m.label}</Text>;
+          // the label sits on a strip of background so the lifelines it spans do not run through its letters
+          return (
+            <div key={m.id} style={{ ...spot(b, (a[0] + z[0]) / 2, S.rowY(k) - 0.22, Math.abs(z[0] - a[0]) - 0.1), opacity: r, display: "flex", justifyContent: "center" }}>
+              <Text u={u} size={0.22} color={m.reply ? pal.muted : pal.text}
+                style={{ minWidth: 0, padding: `0 ${0.08 * u}px`, background: pal.bg }}>{m.label}</Text>
+            </div>
+          );
         })}
       </Board>
     );
@@ -176,7 +184,7 @@ export const time: Renderers<TypesOf<typeof defs>> = {
         ))}
         <Svgtext u={u} x={L.x0} y={L.axisY} color={pal.muted} anchor="start" isMono>{fmt(el.span[0], el.unit)}</Svgtext>
         <Svgtext u={u} x={L.x1} y={L.axisY} color={pal.muted} anchor="end" isMono>{fmt(el.span[1], el.unit)}</Svgtext>
-        {now !== undefined && <Now u={u} x={L.x(now)} y0={L.tagY} y1={L.bottom} text={`now ${fmt(Math.round(now), el.unit)}`} color={color}
+        {now !== undefined && <Now u={u} x={L.x(now)} y0={L.tagY} y1={L.bottom} hw={L.W / 2} text={`now ${fmt(Math.round(now), el.unit)}`} color={color}
           opacity={change.prev.cursor === undefined ? change.p : 1} />}
       </>}>
         {el.lanes.map((l) => (
@@ -198,8 +206,13 @@ export const time: Renderers<TypesOf<typeof defs>> = {
     const D = RING * u;
     const r = (RING / 2 - 0.12) * u;
     const C = 2 * Math.PI * r;
+    // tenths under 10 s (a 0.2 s timeout must not read "1 s"), m:ss from a minute, h:mm:ss from an hour
     const secs = Math.ceil(left - 1e-6);
-    const clock = el.total >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` : `${secs} s`;
+    const two = (n: number) => String(n).padStart(2, "0");
+    const clock = el.total < 10 ? `${(Math.ceil(left * 10 - 1e-6) / 10).toFixed(1)} s`
+      : el.total < 3600 ? (el.total < 60 ? `${secs} s` : `${Math.floor(secs / 60)}:${two(secs % 60)}`)
+      : `${Math.floor(secs / 3600)}:${two(Math.floor(secs / 60) % 60)}:${two(secs % 60)}`;
+    const size = Math.min(0.4, 1.3 / (clock.length * 0.6)); // mono, fits inside the ring
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
         <svg width={D} height={D} viewBox={`${-D / 2} ${-D / 2} ${D} ${D}`}>
@@ -207,7 +220,7 @@ export const time: Renderers<TypesOf<typeof defs>> = {
             strokeDasharray={dashed(bad || doom > 0.5, u)} />
           <circle r={r} fill="none" stroke={ring} strokeWidth={0.14 * u} strokeLinecap="round" strokeDasharray={`${C} ${C}`} strokeDashoffset={C * (1 - f)}
             transform="rotate(-90)" opacity={f > 0.004 ? 1 : 0} />
-          <Svgtext u={u} x={0} y={0} size={0.4} color={mix(pal.text, pal.bad, doom)} isMono>{clock}</Svgtext>
+          <Svgtext u={u} x={0} y={0} size={size} color={mix(pal.text, pal.bad, doom)} isMono>{clock}</Svgtext>
         </svg>
         <Caption u={u} text={el.label} pal={pal} />
       </div>
@@ -221,6 +234,11 @@ export const time: Renderers<TypesOf<typeof defs>> = {
     const on = (s: { active?: string }, id?: string) => (id === undefined ? s.active !== undefined : s.active === id) ? 1 : 0;
     const lit = (id?: string) => lerp(on(change.prev, id), on(el, id), change.p);
     const base = mix(pal.text, pal.muted, lit()); // once a step is active, the others step back
+    // when the active step changes, a dot runs clockwise along the arcs from the old step to the new one
+    const n = el.steps.length;
+    const [i0, i1] = [el.steps.findIndex((s) => s.id === change.prev.active), el.steps.findIndex((s) => s.id === el.active)];
+    const route = i0 >= 0 && i1 >= 0 && i0 !== i1 ? Array.from({ length: (i1 - i0 + n) % n }, (_, k) => C.arc((i0 + k) % n)).flat() : [];
+    const dot = route.length ? along(route, change.p).at : null;
     return (
       <Board w={w} h={h} svg={<>
         {el.steps.map((s, i) => {
@@ -245,12 +263,14 @@ export const time: Renderers<TypesOf<typeof defs>> = {
             </g>
           );
         })}
+        {dot && <circle cx={dot[0] * u} cy={dot[1] * u} r={0.11 * u} fill={color} stroke={pal.bg} strokeWidth={0.03 * u}
+          opacity={interpolate(change.p, [0, 0.08, 0.85, 1], [0, 1, 1, 0], clamp)} />}
       </>}>
         {el.steps.map((s, i) => {
           const L = C.label(i);
           return <Text key={s.id} u={u} color={mix(base, pal.text, lit(s.id))} style={spot(b, L.x, L.y, L.w)}>{s.label}</Text>;
         })}
-        {el.label && <Text u={u} size={0.24} color={pal.muted} style={spot(b, 0, 0, 2 * (CY.r - CY.node) - 0.3)}>{el.label}</Text>}
+        {el.label && <Text u={u} size={0.24} color={pal.muted} style={spot(b, 0, 0, CY.middle)}>{el.label}</Text>}
       </Board>
     );
   },
@@ -258,45 +278,49 @@ export const time: Renderers<TypesOf<typeof defs>> = {
   pipeline: ({ el, u, w, h, color, bad, ctx, change }) => {
     const { pal } = ctx;
     const b = { u, w, h };
-    const P = pipelineLayout(el);
+    const [P, P0] = [pipelineLayout(el), pipelineLayout(change.prev)];
     const [T, B, M, N] = [P.cy - PL.h / 2, P.cy + PL.h / 2, P.cy, PL.notch];
-    const chevron = (i: number) => {
-      const a = P.left(i);
-      const pts: Pt[] = [[a, T], [a + PL.w - N, T], [a + PL.w, M], [a + PL.w - N, B], [a, B], ...(i ? [[a + N, M] as Pt] : [])];
+    const chevron = (a: number, notch: boolean) => {
+      const pts: Pt[] = [[a, T], [a + PL.w - N, T], [a + PL.w, M], [a + PL.w - N, B], [a, B], ...(notch ? [[a + N, M] as Pt] : [])];
       return pts.map(([x, y]) => `${x * u},${y * u}`).join(" ");
     };
-    const stages = el.stages.map((s, i) => {
-      const prev = change.prev.stages.find((x) => x.id === s.id);
-      const [was, is] = [prev?.status ?? "pending", s.status ?? "pending"];
-      const p = prev && was !== is ? change.p : 1;
+    // matched by id across a set: kept stages slide to their new slot, new ones fade in, dropped ones fade out where they were
+    const stages = byId(change.prev.stages, el.stages, change.p).map(({ item: s, from, o, gone }) => {
+      const [i, j] = [el.stages.indexOf(s), change.prev.stages.indexOf(from)];
+      const left = gone ? P0.left(j) : j < 0 ? P.left(i) : lerp(P0.left(j), P.left(i), change.p);
+      const [was, is] = [from.status ?? "pending", s.status ?? "pending"];
+      const p = was !== is ? change.p : 1;
       const [a, z] = [statusLook(pal, color, was), statusLook(pal, color, is)];
-      return { s, i, was, is, p, o: prev ? 1 : change.p, tone: mix(a.tone, z.tone, p), fill: lerp(a.fill, z.fill, p) };
+      return { s, left, notch: (gone ? j : i) > 0, was, is, p, o, tone: mix(a.tone, z.tone, p), fill: lerp(a.fill, z.fill, p) };
     });
-    const caption = (i: number, st: string, opacity: number) => {
+    const spin = (ctx.frame / ctx.t.fps) * 180; // a running stage's loader turns, so "running" reads without the caption
+    const caption = (cx: number, st: string, opacity: number) => {
       const look = statusLook(pal, color, st);
       const Icon = iconFor(look.icon);
       return (
-        <div key={st} style={{ ...spot(b, P.cx(i), P.capY, PL.w - 0.3), display: "flex", alignItems: "center", justifyContent: "center", gap: 0.08 * u, opacity }}>
-          <Icon size={0.24 * u} color={look.tone} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+        <div key={st} style={{ ...spot(b, cx, P.capY, PL.w - 0.3), display: "flex", alignItems: "center", justifyContent: "center", gap: 0.08 * u, opacity }}>
+          <Icon size={0.24 * u} color={look.tone} strokeWidth={2.2} style={{ flexShrink: 0, transform: st === "running" ? `rotate(${spin}deg)` : undefined }} />
           <Text u={u} size={0.22} color={look.tone}>{st}</Text>
         </div>
       );
     };
     return (
-      <Board w={w} h={h} svg={stages.map(({ s, i, is, o, tone, fill }) => (
-        <polygon key={s.id} points={chevron(i)} opacity={o} fill={alpha(tone, fill)} stroke={tone} strokeWidth={0.03 * u} strokeLinejoin="round"
+      <Board w={w} h={h} svg={stages.map(({ s, left, notch, is, o, tone, fill }) => (
+        <polygon key={s.id} points={chevron(left, notch)} opacity={o} fill={alpha(tone, fill)} stroke={tone} strokeWidth={0.03 * u} strokeLinejoin="round"
           strokeDasharray={dashed(bad || is === "failed", u)} />
       ))}>
-        {stages.map(({ s, i, was, is, p, o, tone }) => {
+        {stages.map(({ s, left, notch, was, is, p, o, tone }) => {
           const Icon = s.icon ? iconFor(s.icon) : null;
+          const cx = left + PL.w / 2;
           return (
             <React.Fragment key={s.id}>
-              <div style={{ ...spot(b, P.cx(i) + (i ? N / 4 : -N / 4), M, PL.w - 0.8), display: "flex", alignItems: "center", justifyContent: "center", gap: 0.1 * u, opacity: o }}>
+              <div style={{ ...spot(b, cx + (notch ? N / 3 : -N / 6), M, PL.text), display: "flex", alignItems: "center", justifyContent: "center", gap: 0.1 * u, opacity: o }}>
                 {Icon && <Icon size={0.32 * u} color={tone} strokeWidth={1.8} style={{ flexShrink: 0 }} />}
                 <Text u={u} color={pal.text} style={{ minWidth: 0 }}>{s.label}</Text>
               </div>
-              {was !== is && p < 1 && caption(i, was, (1 - p) * o)}
-              {caption(i, is, p * o)}
+              {/* the old status goes before the new one comes, so two words never sit on top of each other */}
+              {was !== is && p < 0.5 && caption(cx, was, (1 - 2 * p) * o)}
+              {caption(cx, is, (was !== is ? Math.min(1, Math.max(0, 2 * p - 1)) : 1) * o)}
             </React.Fragment>
           );
         })}

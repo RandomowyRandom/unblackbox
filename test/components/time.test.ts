@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { time } from "../../src/components/time.ts";
+import { eventLabelW, fmt, MONO, tagX, time, timelineLayout, TL } from "../../src/components/time.ts";
 import { gallery } from "../../src/gallery.ts";
 import { edgesOf, parseSpec, partsOf, sizeOf, type Add } from "../../src/spec.ts";
 
@@ -33,15 +33,49 @@ test("timeline: events are parts, inside the span; cursor and events can be set"
   const ok = add("timeline", { ...base, events: [] });
   assert.deepEqual(issues(ok, set({ cursor: 61 })), [{ path: "beats.0.do.1", message: "cursor at 61 is outside the span 0 to 60" }]);
   assert.deepEqual(issues(ok, set({ span: [0, 10] })), [{ path: "beats.0.do.1.state", message: 'Unrecognized key: "span"; settable: cursor, events' }]);
+  // a span whose width overflows to Infinity would put every event at the left end
+  assert.deepEqual(issues(add("timeline", { span: [-1e308, 1e308], events: [] })).map((i) => i.message),
+    ["span is too wide to draw; pick a unit that keeps the numbers small, e.g. [0, 60] min"]);
+});
+
+test("timeline and lanes: span labels and the now tag stay inside the footprint", () => {
+  assert.equal(fmt(86400, "ms"), "86,400 ms");
+  assert.equal(fmt(1_500_000, "ms"), "1.5M ms");
+  assert.equal(fmt(2.25), "2.3");
+  // a long span label pushes the axis in instead of spilling past the left edge
+  const L = timelineLayout({ span: [86400, 172800], unit: "s", w: 9 });
+  assert.ok(L.x0 - TL.spanGap - fmt(86400, "s").length * MONO >= -L.W / 2, "start label fits");
+  assert.ok(L.x1 + TL.spanGap + fmt(172800, "s").length * MONO <= L.W / 2, "end label fits");
+  assert.equal(timelineLayout({ span: [0, 60], w: 9 }).x0, -3.5, "short labels keep the default margin");
+  // a cursor at the span end of lanes (axis runs to the edge) keeps its tag inside
+  const text = "now 40 ms";
+  assert.ok(tagX(4.4, text, 4.5) + (text.length * MONO) / 2 <= 4.5);
+  assert.equal(tagX(0, text, 4.5), 0);
+});
+
+test("lint: labels that would end in '...' are reported, the examples are not", () => {
+  const lint = (type: string, fields: Record<string, unknown>) => (time.find((d) => d.type === type) as { lint?: (e: never) => string[] }).lint?.(el(type, fields) as never) ?? [];
+  for (const d of time) assert.deepEqual(lint(d.type, d.example.add), [], `${d.type} example`);
+  // crowded events sit 0.6 units apart: their labels shorten instead of overlapping, and lint says so
+  const events = Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, at: i * 10, label: "SET user:42" }));
+  const crowded = { span: [0, 50], w: 5, events };
+  assert.ok(Math.max(...eventLabelW(crowded as never).values()) < 2);
+  assert.match(lint("timeline", crowded).join(), /end in '\.\.\.'/);
+  assert.deepEqual(lint("pipeline", { stages: [{ id: "a", label: "integration tests", icon: "bug" }, { id: "b", label: "deploy" }] }),
+    ["'integration tests' is too long for the stage chevron and ends in '...'; use one or two short words"]);
 });
 
 test("sequence: participants are parts, messages are edges a packet can ride", () => {
-  const seq = el("sequence", ex("sequence").add);
+  const seq = el("sequence", { ...ex("sequence").add, shown: undefined });
   assert.deepEqual(Object.keys(partsOf(seq)), ["browser", "api"]);
   assert.deepEqual(Object.keys(edgesOf(seq)), ["hello", "cert", "key", "done"]);
   const [a, b] = edgesOf(seq).cert;
   assert.ok(a[1] === b[1] && a[0] > b[0], "a reply runs back along its row");
-  assert.deepEqual(issues(add("sequence", ex("sequence").add), { op: "trace", ids: ["x.hello", "x.cert"], label: "Ana" }), []);
+  // only drawn messages carry a packet: shown 1 hides 'cert' until a set reveals it
+  const hidden = add("sequence", ex("sequence").add);
+  assert.deepEqual(issues(hidden, { op: "trace", ids: ["x.hello", "x.cert"], label: "Ana" }),
+    [{ path: "beats.0.do.1.ids.1", message: "'x' has no edge 'cert': hello" }]);
+  assert.deepEqual(issues(hidden, set({ shown: 2 }), { op: "trace", ids: ["x.hello", "x.cert"], label: "Ana" }), []);
   const two = { participants: [{ id: "a", label: "A" }, { id: "b", label: "B" }], messages: [{ id: "m", from: "a", to: "db", label: "GET" }] };
   assert.deepEqual(issues(add("sequence", two)), [{ path: "beats.0.do.0", message: "message 'm' names unknown participant 'db'; there are: a, b" }]);
   const ok = add("sequence", { ...two, messages: [{ id: "m", from: "a", to: "b", label: "GET" }] });
