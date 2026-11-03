@@ -7,7 +7,7 @@
 
 <p align="center">
   <b>Ask your agent how a system works. Get a two-minute narrated video back.</b><br>
-  An agent-driven CLI that turns one JSON spec into a calm, visual explainer video: components, data flowing between them, one real example traced end to end, and a voice.
+  An agent plugin and CLI that explains a codebase or architecture as a calm, visual video: components, data flowing between them, one real example traced end to end, and a voice. For Claude Code, Codex, Copilot CLI, Gemini CLI and any agent with Agent Skills.
 </p>
 
 <p align="center">
@@ -99,7 +99,13 @@ Then run `/unblackbox:setup`.
 
 ### Any other agent with Agent Skills
 
-Copy [`skills/unblackbox`](skills/unblackbox) and [`skills/setup`](skills/setup) into your agent's skills folder and ask it to "set up unblackbox". The setup skill clones the tool to `~/.unblackbox/app` when only the skill folders are present.
+Cursor, OpenCode, Windsurf and other agents that read Agent Skills can install both skills with [skills](https://skills.sh):
+
+```bash
+npx skills add RandomowyRandom/unblackbox
+```
+
+Or copy [`skills/unblackbox`](skills/unblackbox) and [`skills/setup`](skills/setup) into your agent's skills folder by hand. Then ask the agent to "set up unblackbox"; the setup skill clones the tool to `~/.unblackbox/app` when only the skill folders are present.
 
 ### By hand
 
