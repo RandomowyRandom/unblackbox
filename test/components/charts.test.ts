@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { charts, niceMax, vennLayout } from "../../src/components/charts.ts";
-import { parseSpec, partsOf, type Add } from "../../src/spec.ts";
+import { parseSpec, partsOf, sizeOf, type Add } from "../../src/spec.ts";
 
 const def = (type: string) => charts.find((d) => d.type === type)!;
 const add = (type: string, fields: Record<string, unknown>) => ({ op: "add", type, id: "c", at: [8, 4.5], ...fields });
@@ -68,4 +68,26 @@ test("funnel: a stage wider than the one before is an error; stages are parts", 
   const ok = def("funnel").example.add;
   assert.deepEqual(Object.keys(partsOf(add("funnel", ok) as Add)), ["0", "1", "2", "3"]);
   assert.deepEqual(issues(add("funnel", ok), set({ stages: [{ label: "a", value: 1 }] })).map((i) => i.path), ["beats.0.do.1.state.stages"]);
+});
+
+test("direct labels may not be empty: they are the only key", () => {
+  assert.deepEqual(issues(add("bars", { unit: "ms", bars: [{ label: "", value: 1 }] })).map((i) => i.path), ["beats.0.do.0.bars.0.label"]);
+  assert.deepEqual(issues(add("bars", { unit: "", bars: [{ label: "eu", value: 1 }] })).map((i) => i.path), ["beats.0.do.0.unit"]);
+  assert.deepEqual(issues(add("compare", def("compare").example.add), set({ columns: [{ title: "A", items: [""] }, { title: "B", items: ["x"] }] })).map((i) => i.path),
+    ["beats.0.do.1.state.columns.0.items.0"]);
+  assert.deepEqual(issues(add("venn", { sets: [{ id: "a", label: "" }, { id: "b", label: "B" }], items: [] })).map((i) => i.path), ["beats.0.do.0.sets.0.label"]);
+});
+
+test("compare columns are wide enough for the longest title and item", () => {
+  const long = { title: "Twenty characters ok", icon: "send", items: ["twenty-four characters!!"] };
+  const [cw] = sizeOf(add("compare", { columns: [long, { title: "B", items: ["x"] }] }) as Add);
+  assert.ok((cw - 0.3) / 2 >= 0.25 * 2 + 0.49 + 20 * 0.16, `compare ${cw}`);
+});
+
+test("a set that drops a bar an arrow points at is an error; tiny values still get an axis", () => {
+  const bars = [{ label: "eu", value: 1 }, { label: "us", value: 2 }, { label: "ap", value: 3 }];
+  const arrow = { op: "add", type: "arrow", id: "a", from: [1, 1], to: "c.2", label: "slow" };
+  assert.deepEqual(issues(add("bars", { unit: "ms", bars }), arrow, set({ bars: bars.slice(0, 2) })),
+    [{ path: "beats.0.do.2", message: "'a' still points at 'c.2', which this change removes" }]);
+  assert.equal(niceMax(5e-324), 5e-324);
 });
