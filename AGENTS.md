@@ -68,7 +68,7 @@ Every element takes `id`, `wait`, `color?` and `emphasis?` (`quiet` fades it int
 | `text` | a title or a short label, never a sentence: `text` (`\n` breaks lines), `size?` h1 / h2 / body, `color?`, `at?` |
 | `code` | a glimpse of a key type or interface, at most 8 lines: `lang`, `code` (string or array of lines), `title?`, `at?` |
 
-Icons are [Lucide](https://lucide.dev/icons) names in kebab-case; an unknown name is an error. Useful ones for systems: `user`, `users`, `bot`, `brain`, `monitor`, `smartphone`, `gamepad-2`, `server`, `database`, `hard-drive`, `cloud`, `globe`, `network`, `plug`, `cpu`, `cog`, `layers`, `box`, `boxes`, `package`, `folder`, `file`, `file-code`, `file-diff`, `git-branch`, `git-commit-horizontal`, `hash`, `key`, `lock`, `shield`, `zap`, `clock`, `hourglass`, `timer`, `refresh-cw`, `repeat`, `send`, `inbox`, `mail`, `message-square`, `bell`, `search`, `filter`, `list`, `list-checks`, `check`, `x`, `triangle-alert`, `flame`, `bug`, `copy`, `receipt`, `shopping-cart`.
+Icons are [Lucide](https://lucide.dev/icons) names in kebab-case; an unknown name is an error. Useful ones for systems: `user`, `users`, `bot`, `brain`, `monitor`, `smartphone`, `gamepad-2`, `server`, `database`, `hard-drive`, `cloud`, `globe`, `network`, `plug`, `cpu`, `cog`, `layers`, `box`, `boxes`, `package`, `folder`, `file`, `file-code`, `file-diff`, `git-branch`, `git-commit-horizontal`, `hash`, `key`, `lock`, `shield`, `zap`, `clock`, `hourglass`, `timer`, `refresh-cw`, `repeat`, `send`, `inbox`, `mail`, `message-square`, `bell`, `search`, `funnel`, `list`, `list-checks`, `check`, `x`, `triangle-alert`, `flame`, `bug`, `copy`, `receipt`, `shopping-cart`.
 
 Colors are semantic: `accent`, `muted`, `good`, `bad`. Hex is rejected. `bad` boxes, cells and arrows are dashed so the meaning survives color blindness.
 
@@ -165,34 +165,61 @@ Examples: `examples/queue-decoupling.json` (system: one scene that grows as one 
 
 ## Playground (interactive sandbox)
 
-A playground is a small Tauri app where the viewer plays with the system the video explained: buttons trigger events (send an order, crash a worker) and clicking a component explains it, with the same board, icons, colors and voice as the video.
+A playground is a small Tauri app over the video's board where the system actually runs. Numbered entities (order 1041, 1042) flow along the arrows, wait in queues and are worked on. The viewer pulls levers (a rate slider, worker count, ack mode), switches faults on (crash the worker, slow the mail server, cut a link), takes parts out, and watches what follows on the board and on probes (counters and a chart). Guided stages add one lever at a time and end in the full sandbox; challenges ask the viewer to predict, then fix or break something. Nothing is scripted: you describe how each part behaves, and the build plays the game itself to prove the challenges work.
 
 | command | what it does |
 |---|---|
-| `unblackbox game topic.game.json` | about 20 s. Validates, voices every line, and writes `out/<topic>-play/`: the player exe, the game data, a web build, and `sheet.png` (the board plus the end state of every line). Prints `{ok, out, exe, sheet, warnings}` with the same kind of paths as `validate` |
+| `unblackbox game topic.game.json --check` | a few seconds, no voice. Validates, then plays every lever at both ends (alone and with one other lever moved), every fault, every removal and every challenge (setup alone, with its solution, with each control alone) on 4 seeds. Prints `{ok, warnings, runs}`: `runs` is a table of peak values per run and the notes that fired. On failure: errors with paths, and the table |
+| `unblackbox game topic.game.json` | about 20 s. The check, then voices every line and writes `out/<topic>-play/`: the player exe, the game data, a web build, and `sheet.png` (the board, then as the sim leaves it after the defaults run and after each challenge with and without its solution) |
 | `unblackbox play out/<topic>-play` | opens it. The folder is the deliverable: open the player app in it (an .exe on Windows), or share the folder. A player runs only on the OS it was built on |
 | `unblackbox schema game` | exact JSON Schema of the playground spec |
 
 ```json
 {
-  "title": "Queue playground",
-  "scene": [ "add ops: the board, usually the video's main scene as it ends" ],
-  "intro": { "say": "Press a button to make something happen, or click any part." },
-  "events": [
-    { "id": "crash", "label": "Crash worker", "icon": "flame",
-      "outcomes": [ { "say": "The worker crashed.", "do": [{ "op": "color", "id": "worker", "color": "bad" }] } ] },
-    { "id": "order", "label": "Place order", "icon": "receipt",
-      "outcomes": [
-        { "if": { "worker": "bad" }, "say": "The order waits in the queue.", "do": [{ "op": "trace", "ids": ["enqueue"], "label": "order" }] },
-        { "say": "The worker sends the receipt.", "do": [{ "op": "trace", "ids": ["enqueue", "deliver"], "label": "order" }] } ] }
-  ],
-  "inspect": { "worker": { "say": "The worker sends receipts on its own time.", "do": [{ "op": "focus", "id": "worker" }, { "op": "unfocus", "wait": 2.5 }] } }
+  "version": 2, "title": "Queue playground", "start": { "primary": "worker.down" },
+  "scene": [ "add ops: the video's main scene as it ends, plus probe elements (counter, gauge, progress, chart)" ],
+  "sim": {
+    "entity": { "kind": "order", "icon": "receipt", "first": 1041 },
+    "params": { "rate": { "label": "Orders per second", "min": 0.1, "max": 1, "step": 0.05, "value": 0.25 },
+                "ack": { "label": "Remove from queue on", "options": ["take", "done"], "value": "take" } },
+    "nodes": { "customer": { "kind": "source", "rate": { "param": "rate" } },
+               "queue": { "kind": "queue", "ack": { "param": "ack" } },
+               "worker": { "kind": "worker", "time": [1, 1.4], "awaits": true, "faults": ["down"] },
+               "mail": { "kind": "sink", "time": 0.5 } },
+    "links": { "send": { "latency": 0.8, "retry": { "timeout": 1.5, "max": 2 } } },
+    "spans": { "customerWait": { "from": "customer", "to": "queue" } }
+  },
+  "probes": [{ "metric": "lost", "show": "lostCounter" }],
+  "notes": [{ "on": "lost", "at": "worker", "say": "The worker crashed holding this order. Nobody else had it." }],
+  "stages": [{ "id": "crash", "title": "Crash it", "controls": ["worker.down"], "reveal": ["lostCounter"], "challenge": "keepIt" },
+             { "id": "free", "title": "Sandbox", "controls": "all" }],
+  "challenges": [{ "id": "keepIt", "ask": "The worker will crash while holding an order. Lose nothing.",
+    "setup": { "script": [{ "at": 5, "fault": "worker.down", "when": "busy", "for": 8 }] }, "controls": ["ack"], "by": 30,
+    "goal": [{ "metric": "lost", "atMost": 0 }], "solution": [{ "at": 0, "param": "ack", "value": "done" }] }]
 }
 ```
 
-- `scene`: add ops only; no code elements. Everything else refers to these elements.
-- `intro`, `inspect.<id>` and every outcome are lines `{ say, do }`. Their `do` may only use `trace`, `color`, `set`, `fill`, `pulse`, `focus`, `unfocus`, `camera` and `move`.
-- `events`: up to 8 buttons `{ id, label, icon, outcomes }`. A press runs the first outcome whose `if` matches; `if` maps element ids to the color they have right now (arrows start `muted`, everything else `accent`). Colors are the sandbox's state, so a `color` op changes what later presses do. The last outcome has no `if`.
+**The sim.** `sim.nodes` maps board element ids to one of four kinds. The flow arrows between them (one way out of every node but a sink) are the links; `sim.links` sets an arrow's `latency` (default 1 s), `retry` and `faults: ["cut"]`. A retry resends when the receiver has not finished the entity within `timeout` (also after it was refused or dropped), up to `max` times; a slow receiver then gets it twice.
+
+| kind | on | behaviour | metrics |
+|---|---|---|---|
+| `source` | icon, box | makes entities at `rate` per second, `arrivals` even (default, the same every run) or poisson; `burst: N` lets the player send N at once | length |
+| `queue` | cells | first in, first out; holds as many as its cells have slots. `overflow`: block (the sender holds on) or drop. `ack`: take (gone once a worker takes it) or done (kept until the worker finishes, so a crash redelivers it) | length, dropped |
+| `worker` | box, icon | takes `time` seconds per entity (`[min, max]` picks in between) in `concurrency` slots, then holds it until the next part takes it (backpressure). `full`: wait or refuse. `awaits: true` keeps the slot busy until what it sent is finished (a synchronous call). `show.concurrency` names a badge for the slot count | length, busy, utilization, refused, done |
+| `sink` | icon, box, store | ends the flow after `time`; `dedupe` ignores an entity it already finished (an idempotency key) | busy, done, duplicates |
+
+- These fields take a lever `{ "param": "id" }` instead of a value: source `rate`, worker `time`, `concurrency` and `full`, queue `overflow` and `ack`, sink `time` and `dedupe`, retry `enabled`. A lever lives in `sim.params`: `{label, min, max, step, value, unit?, from?}` or `{label, options, value, from?}`; options are the field's values (`off`/`on` for yes/no fields). Put where a number comes from (`file:line`, a config key) in `from`.
+- Faults: `faults` on a worker or sink lists what may happen to it (`down`: stops, and loses what it holds unless a queue kept a copy; `slow`: four times slower). `removable: { "bridge": "order" }` on a queue or worker lets the player take it out; what fed it then sends straight to what it fed. Controls are named like `rate` (a param), `worker.down`, `send.cut`, `queue.remove`, `customer.burst`.
+- Metrics: `lost`, `done`, `<node>.<metric>` from the table, and `<span>.p50` / `.p90` / `.max`: seconds from when an entity reaches the span's `from` until its `to` hands it on, over the last 10 s, counting the ones still waiting.
+- Events, for notes: `blocked` (a sender holds an entity because this part will not take it), `dropped`, `refused`, `lost`, `redelivered`, `retried`, `duplicate`, `deduped`, `down`, `drained`, `removed`; `at` is the node or arrow.
+
+**Around the sim.**
+- `probes` (up to 4): `{metric, show, series?}` puts a metric on a counter, gauge or progress, or on a chart series. Nothing a challenge checks may be hidden: a goal's metric needs a probe that a stage has revealed by then.
+- `notes` (up to 8): `{on: event, at?, say}` or `{when: {metric, atMost | moreThan}, say}`, said the first time it happens. Never speak live numbers; probes show them.
+- `stages`: `{id, title, say?, controls, reveal, challenge?}` in order, one new lever per stage; the last has `"controls": "all"`. `start.primary` is the control that glows first.
+- `challenges` (up to 4): `{id, ask, setup: {params, removed, script}, controls, by, predict?: {ask, options: [{say, when}]}, goal?, hints, success?, fail?, solution?}`. `script` and `solution` are moves: `{at, param, value}`, `{at, fault, for?, when?: "busy"}` (busy: waits until that node is working on an entity, so a crash always catches one), `{at, remove}` or `{at, burst}`. A goal can ask to fix something (`lost atMost 0`) or to break it (`mail.duplicates moreThan 0`); give one decoy control. The check fails when the solution misses the goal on any seed, when the setup already meets it, or when not exactly one predict option is true.
+- `inspect.<id>`: `{say, do}` for clicking a part; `do` may only use `trace`, `color`, `set`, `fill`, `pulse`, `focus`, `unfocus`, `camera` and `move`.
+- `scene`: add ops only; no code elements.
 - One-time setup: the `setup` skill with playgrounds, or `node scripts/setup.mjs --playground` (needs Rust). Without it `game` still writes the data and the web build and warns that the exe is missing.
 
-Example: `examples/queue-decoupling.game.json`.
+Example: `examples/queue-decoupling.game.json` (stages: watch it run, crash it, take the queue out, send twice, sandbox).

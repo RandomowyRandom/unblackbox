@@ -3,14 +3,22 @@ import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { appendLine, applyColors, initialColors, pickOutcome, walkthrough, type Bundle, type Colors, type Line } from "../src/game.ts";
-import { iconFor } from "../src/spec.ts";
+import { walkthrough, type Bundle, type Line } from "../src/game.ts";
+import type { Beat } from "../src/spec.ts";
 import { buildTimeline, type Voiced } from "../src/timeline.ts";
 import { themeOf, type Palette } from "../src/themes.ts";
 import { sans } from "../src/video/theme.ts";
 import { Video } from "../src/video/Video.tsx";
 
 const HOUR = 30 * 60 * 60; // the board keeps running; lines are appended as the player acts
+
+// ponytail: interim player for the v2 format: the board plus inspect lines; the live sim board replaces this.
+// Grows the live beat list: an idle gap (so the line starts when the player acted), then the line itself.
+function appendLine(live: { beats: Beat[]; voiced: Voiced[] }, line: Line, voice: Voiced, gapSec: number) {
+  const gap = gapSec > 0.05 ? [{ beat: { hold: gapSec, do: [] }, voice: { file: null, sec: 0 } }] : [];
+  const added = [...gap, { beat: { say: line.say, do: line.do }, voice }];
+  return { beats: [...live.beats, ...added.map((a) => a.beat)], voiced: [...live.voiced, ...added.map((a) => a.voice)] };
+}
 
 // Where the playground's files are: next to the exe (Tauri) or next to this page (browser).
 async function locate(): Promise<(file: string) => string> {
@@ -31,7 +39,6 @@ function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => st
   const player = useRef<PlayerRef>(null);
   const spec = useMemo(() => walkthrough(game), [game]);
   const [live, setLive] = useState(() => ({ beats: [spec.beats[0]], voiced: [{ file: null, sec: 0 }] as Voiced[] }));
-  const [colors, setColors] = useState<Colors>(() => initialColors(game));
   const [caption, setCaption] = useState("");
   const [frame, setFrame] = useState(0);
   const [started, setStarted] = useState(false);
@@ -55,14 +62,14 @@ function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => st
   const run = (key: string, line: Line) => {
     const now = player.current?.getCurrentFrame() ?? 0;
     setLive((l) => appendLine(l, line, voices[key], Math.max(0, now - end) / t.fps));
-    setColors((c) => applyColors(c, line));
     setCaption(line.say ?? "");
   };
 
   const start = () => {
     setStarted(true);
     player.current?.play();
-    run("intro", game.intro);
+    const first = game.stages?.[0];
+    if (first?.say) run(`stage.${first.id}`, { say: first.say, do: [] });
   };
 
   const inspect = (e: MouseEvent) => {
@@ -84,17 +91,7 @@ function Playground({ bundle, url }: { bundle: Bundle; url: (file: string) => st
       </main>
       <aside style={{ display: "flex", flexDirection: "column", gap: 12, padding: "32px 24px", borderLeft: `1px solid ${palette.panel}`, background: palette.panel }}>
         <div style={{ fontSize: 24, fontWeight: 600 }}>{game.title}</div>
-        <div style={{ fontSize: 15, color: palette.muted, marginBottom: 12 }}>Press a button to make something happen, or click any part of the system.</div>
-        {game.events.map((e) => {
-          const Icon = iconFor(e.icon);
-          const enabled = started && !busy;
-          return (
-            <button key={e.id} disabled={!enabled} style={button(enabled, palette)}
-              onClick={() => { const k = pickOutcome(e, colors); run(`event.${e.id}.${k}`, e.outcomes[k]); }}>
-              <Icon size={22} color={palette.accent} /> {e.label}
-            </button>
-          );
-        })}
+        <div style={{ fontSize: 15, color: palette.muted, marginBottom: 12 }}>Click any part of the system.</div>
       </aside>
       {!started && (
         <div style={{ position: "fixed", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28,
