@@ -72,7 +72,7 @@ export function buildTimeline(spec: Spec, voiced: Voiced[]): Timeline {
       if (a.op === "move") tracks.get(a.id)!.moves.push({ frame, to: a.to });
       if (a.op === "morph") tracks.get(a.id)!.morphs.push({ frame, code: a.code });
       if (a.op === "color") tracks.get(a.id)!.colors.push({ frame, color: a.color });
-      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight } });
+      if (a.op === "fill") tracks.get(a.id)!.sets.push({ frame, state: { items: a.items, highlight: a.highlight ?? [] } }); // fill names the slots that changed now
       if (a.op === "set") tracks.get(a.id)!.sets.push({ frame, state: a.state });
       if (a.op === "pulse") tracks.get(a.id)!.pulses.push(frame);
       if (a.op === "focus") focus.push({ frame, ids: [a.id].flat(), lines: a.lines ?? null });

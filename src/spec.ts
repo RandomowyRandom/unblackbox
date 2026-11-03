@@ -8,11 +8,12 @@ export { CAPTION, Color, GRID, Icon, ICON_SIZE, iconFor, Id, Pos, Ref };
 // Pacing and lint limits per viewer level. `pad` is the quiet after each line so the picture can
 // sink in; novices need more of it and fewer new names at once (working memory holds ~4 chunks).
 // changes = visible changes per beat (add, remove, set, color, move); wpm = spoken words per minute of video;
-// ideas = new things (components, actors, labels) per minute: one scene that grows slowly, not a stream of new views.
+// ideas = new things (components, actors, annotations) per minute: one scene that grows slowly, not a stream of new views.
+// maxOnScreen = things in view on the finished board; parts set to emphasis "quiet" do not count.
 export const AUDIENCE = {
-  novice: { pad: 1.8, maxOnScreen: 4, wordsPerBeat: 14, changes: 2, wpm: 80, ideas: 3 },
-  intermediate: { pad: 1.5, maxOnScreen: 5, wordsPerBeat: 16, changes: 3, wpm: 90, ideas: 4 },
-  expert: { pad: 1.1, maxOnScreen: 6, wordsPerBeat: 20, changes: 4, wpm: 110, ideas: 5 },
+  novice: { pad: 1.8, maxOnScreen: 6, wordsPerBeat: 14, changes: 2, wpm: 80, ideas: 4 },
+  intermediate: { pad: 1.5, maxOnScreen: 8, wordsPerBeat: 16, changes: 3, wpm: 90, ideas: 5 },
+  expert: { pad: 1.1, maxOnScreen: 10, wordsPerBeat: 20, changes: 4, wpm: 110, ideas: 6 },
 } as const;
 export const TRACE_STEP = 1.0; // default seconds the trace packet spends on each arrow
 const MAX_LABEL_WORDS = 5; // labels name things; narration explains them
@@ -198,7 +199,7 @@ export function checkSemantics(spec: Spec): Issue[] {
       if (a.op === "fill" && el.type !== "cells") return fail(`fill needs a cells element, '${a.id}' is ${el.type}`);
       if (a.op === "fill" && el.type === "cells" && a.items.length !== el.items.length) return fail(`fill has ${a.items.length} slots; '${a.id}' has ${el.items.length}`);
       if (a.op === "set" && !def.state?.length) return fail(`${an(el.type)} has no state to set; use color, move or a new element`);
-      const raw = a.op === "fill" ? { items: a.items, highlight: a.highlight } : a.state;
+      const raw = a.op === "fill" ? { items: a.items, highlight: a.highlight ?? [] } : a.state;
       const patch = def.setSchema.safeParse(raw);
       if (!patch.success) {
         const keys = `; settable: ${def.state!.join(", ")}`;
@@ -291,44 +292,78 @@ const readsCode = (say: string, codes: Iterable<string>) => {
   return lines.map(tokens).some((w) => w.length >= 4 && w.filter((x) => spoken.has(x)).length / w.length >= 0.8);
 };
 
-// Ops a viewer sees as a change of the picture; traces, focus and camera only direct the eye.
-const CHANGES = new Set<string>(["add", "remove", "set", "fill", "color", "move", "morph"]);
-const SETTLE = 0.8; // seconds between two changes so the eye can follow each
+// Ops a viewer sees as a change of the picture; focus only directs the eye and traces are counted on their own.
+const CHANGES = new Set<string>(["add", "remove", "set", "fill", "color", "move", "morph", "camera"]);
+const SETTLE = 1; // seconds between two changes so the eye can follow each
+const MAX_TRACES = 2; // packets per beat
+const MAX_CAMERA = 4; // camera moves per video: zoom in for a detail and back out, once or twice
+const MAX_HOLD = 15; // seconds a beat may stay still and silent
+const FREE = new Set(["arrow", "group"]); // structure, not a new thing to learn
 
-// A video is one scene that grows: nothing swapped out wholesale, nothing that flashes by,
-// a change or two per beat with room between them, and quiet between lines. Video only.
+// A video is one scene that grows: nothing swapped out (by clear or by removing), nothing that flashes by,
+// a change or two per beat with room between them, a calm camera, and quiet between lines. Video only.
 export function pacing(spec: Spec, totalSec: number): Issue[] {
   const lim = AUDIENCE[spec.audience];
   const out: Issue[] = [];
-  const born = new Map<string, number>(); // id -> beat it came in
+  const warn = (path: string, message: string) => out.push({ path, message });
+  const born = new Map<string, { beat: number; chunks: number }>();
+  const moved = new Map<string, number>(); // id -> beat of its last move
+  const removed: number[] = []; // things (not arrows or annotations) removed per beat
   const clears: string[] = [];
+  let cameras = 0;
   spec.beats.forEach((beat, b) => {
+    removed[b] = 0;
     beat.do.forEach((a, i) => {
-      if (a.op === "add") born.set(a.id, b);
-      if (a.op === "remove" && b - (born.get(a.id) ?? -Infinity) <= 1) {
-        out.push({ path: `beats.${b}.do.${i}`, message: `'${a.id}' leaves right after it came; keep it on the board and change it (set, color, move) instead` });
+      const path = `beats.${b}.do.${i}`;
+      if (a.op === "add") born.set(a.id, { beat: b, chunks: chunksOf(a) });
+      const came = a.op === "remove" ? born.get(a.id) : undefined;
+      if (a.op === "remove" && came?.chunks) {
+        removed[b]++;
+        if (b - came.beat <= 1) warn(path, `'${a.id}' leaves right after it came; keep it on the board and change it (set, color, move) instead`);
+      }
+      if (a.op === "move") {
+        if (b - (moved.get(a.id) ?? -Infinity) < 3) warn(path, `'${a.id}' moves again within three beats; settle the layout once and leave it`);
+        moved.set(a.id, b);
+      }
+      if (a.op === "camera") {
+        cameras++;
+        if (a.zoom !== undefined && a.zoom < 1) warn(path, "zoom below 1 shows empty space around the board; zoom 1 already shows all of it");
       }
       if (a.op !== "clear") return;
-      clears.push(`beats.${b}.do.${i}`);
+      clears.push(path);
       born.clear();
+      moved.clear();
     });
-    const changes = beat.do.filter((a) => CHANGES.has(a.op) && !(a.op === "add" && a.type === "group"));
-    const times = changes.map((a) => a.wait ?? 0).sort((x, y) => x - y);
-    if (changes.length > lim.changes) {
-      out.push({ path: `beats.${b}`, message: `${changes.length} changes in one beat; show ${lim.changes} or fewer and let each settle (split the beat)` });
-    } else if (times.some((t, k) => k > 0 && t - times[k - 1] < SETTLE)) {
-      out.push({ path: `beats.${b}`, message: `changes land less than ${SETTLE} s apart; stagger them with wait so the eye can follow each` });
+    if (removed[b] && b > 0 && removed[b] + removed[b - 1] >= 3) {
+      warn(`beats.${b}`, `${removed[b] + removed[b - 1]} things removed in two beats swaps the scene; keep them and change them, or set emphasis: "quiet"`);
     }
+    // one change = one element at one moment; moves at the same moment make room together
+    const events = new Map<string, number>();
+    for (const a of beat.do) {
+      const t = a.wait ?? 0;
+      if (CHANGES.has(a.op)) events.set(a.op === "move" ? `move@${t}` : `${"id" in a ? a.id : a.op}@${t}`, t);
+    }
+    const times = [...events.values()].sort((x, y) => x - y);
+    if (events.size > lim.changes) {
+      warn(`beats.${b}`, `${events.size} changes in one beat; show ${lim.changes} or fewer and let each settle (split the beat)`);
+    } else if (times.some((t, k) => k > 0 && t - times[k - 1] < SETTLE - 1e-6)) {
+      warn(`beats.${b}`, `changes land less than ${SETTLE} s apart; stagger them with wait so the eye can follow each`);
+    }
+    const traces = beat.do.filter((a) => a.op === "trace").length;
+    if (traces > MAX_TRACES) warn(`beats.${b}`, `${traces} packets in one beat; send one or two and let the viewer follow them`);
+    if ((beat.hold ?? 0) > MAX_HOLD) warn(`beats.${b}.hold`, `${beat.hold} s hold; a still, silent screen loses the viewer, keep it under ${MAX_HOLD} s`);
   });
   if (clears.length > 1) {
-    out.push({ path: clears[1], message: `${clears.length} scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once` });
+    warn(clears[1], `${clears.length} scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once`);
   }
-  const ideas = spec.beats.flatMap((beat) => beat.do).filter((a) => a.op === "add" && chunksOf(a) > 0).length;
-  const perMin = Math.round((ideas / (totalSec / 60)) * 10) / 10;
-  if (perMin > lim.ideas) out.push({ path: "beats", message: `${ideas} new things in ${Math.round(totalSec)} s (${perMin} a minute); aim under ${lim.ideas}: keep one board and change what is on it instead of bringing in new things` });
+  if (cameras > MAX_CAMERA) warn("beats", `${cameras} camera moves; zoom into one part for a detail and back out, once or twice a video`);
+  // annotations count: a badge or a callout is one more thing to read. A short video still gets two minutes' worth.
+  const ideas = spec.beats.flatMap((beat) => beat.do).filter((a) => a.op === "add" && !FREE.has(a.type)).length;
+  const perMin = Math.round((ideas / (Math.max(totalSec, 120) / 60)) * 10) / 10;
+  if (perMin > lim.ideas) warn("beats", `${ideas} new things in ${Math.round(totalSec)} s (${perMin} a minute); aim under ${lim.ideas}: keep one board and change what is on it instead of bringing in new things`);
   const spoken = spec.beats.reduce((s, beat) => s + words(beat.say ?? ""), 0);
   const wpm = Math.round(spoken / (totalSec / 60));
-  if (wpm > lim.wpm) out.push({ path: "beats", message: `about ${wpm} spoken words a minute; aim under ${lim.wpm}: fewer, shorter lines and more quiet between them` });
+  if (wpm > lim.wpm) warn("beats", `about ${wpm} spoken words a minute; aim under ${lim.wpm}: fewer, shorter lines and more quiet between them`);
   return out;
 }
 
@@ -401,9 +436,10 @@ export function lint(spec: Spec, totalSec: number, maxOnScreen: number = AUDIENC
       if ("at" in a && a.at) placed.set(a.id, { el: a, at: a.at, path });
       else if (defOf(a.type).placed) placed.set(a.id, { el: a, at: [8, 4.5], path });
       if (!chunksOf(a)) return;
+      if ("emphasis" in a && a.emphasis === "quiet") return;
       onScreen.set(a.id, chunksOf(a));
       const held = [...onScreen.values()].reduce((s, n) => s + n, 0);
-      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} elements on screen; split the scene or zoom`);
+      if (held > maxOnScreen && !crowded) warn(`more than ${maxOnScreen} things in view; leave out what the question does not need, or set emphasis: "quiet" on parts now in the background`);
       crowded = held > maxOnScreen;
     });
 

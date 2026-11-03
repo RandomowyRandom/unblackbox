@@ -128,7 +128,6 @@ test("lint flags research-backed problems", () => {
     ],
   }).spec!;
   assert.deepEqual(withoutPacing(spec, 400), [
-    { path: "beats.0.do.4", message: "more than 4 elements on screen; split the scene or zoom" },
     { path: "beats.0.do.5", message: "arrow has no label; name what flows along it" },
     { path: "beats.0.do.7", message: "trace jumps from 'x' to 'y'; each arrow should start where the last ended" },
     { path: "beats.0.say", message: "'isExpired' is a function or variable name; talk about the component and what it does" },
@@ -159,7 +158,6 @@ test("lint keeps videos system-level and visual", () => {
     { path: "beats.0.do.0", message: "7 words on screen; keep labels to 5, say the rest" },
     { path: "beats.0.do.1", message: "10 lines of code; show a key type or interface in 8 or fewer, not an implementation" },
     { path: "beats.0.say", message: "'OrderService' is spoken before it is on screen" },
-    { path: "beats.3.do.0", message: "more than 5 elements on screen; split the scene or zoom" },
     { path: "beats", message: "3 beats show code; explain the system with components and flows, keep code to 2 beats" },
     { path: "beats", message: "4 text elements; the voice explains, the screen shows things, not words" },
   ]);
@@ -208,11 +206,11 @@ test("color and fill changes become timed track events and are checked", () => {
 });
 
 test("pacing wants one scene that grows slowly", () => {
-  const box = (id: string, x: number, wait?: number) => ({ op: "add", type: "box", id, label: id, icon: "server", at: [x, 4.5], wait });
+  const box = (id: string, x: number, wait?: number, extra = {}) => ({ op: "add", type: "box", id, label: id, icon: "server", at: [x, 4.5], wait, ...extra });
   const spec = parseSpec({
     title: "t",
     beats: [
-      { say: "one", do: [box("a", 2), box("b", 5), box("c", 8), box("d", 11)] },
+      { say: "one", do: [box("a", 2), box("b", 5, 1), box("c", 8, 2), box("d", 11, 3)] },
       { say: "two", do: [box("e", 14), { op: "remove", id: "d", wait: 1 }] },
       { say: "three", do: [{ op: "clear" }, box("f", 2)] },
       { say: "four", do: [{ op: "clear" }, box("g", 2), box("h", 6, 0.5)] },
@@ -221,9 +219,38 @@ test("pacing wants one scene that grows slowly", () => {
   assert.deepEqual(pacing(spec, 60), [
     { path: "beats.0", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
     { path: "beats.1.do.1", message: "'d' leaves right after it came; keep it on the board and change it (set, color, move) instead" },
-    { path: "beats.3", message: "changes land less than 0.8 s apart; stagger them with wait so the eye can follow each" },
+    { path: "beats.3", message: "changes land less than 1 s apart; stagger them with wait so the eye can follow each" },
     { path: "beats.3.do.0", message: "2 scene changes (clear); build one scene that grows instead: add, set, color and move on the same board, a camera zoom for detail, clear at most once" },
-    { path: "beats", message: "8 new things in 60 s (8 a minute); aim under 4: keep one board and change what is on it instead of bringing in new things" },
   ]);
   assert.deepEqual(lint(spec, 0).filter((i) => /a minute|scene changes|in one beat/.test(i.message)), []); // playground walkthroughs skip it
+
+  // swapping the scene by removing, a busy camera, packet storms and a shuffled layout are caught too;
+  // moves at the same moment (making room) are one change, and waits of 3 and 4 are a full second apart
+  const t = { op: "add", type: "arrow", id: "ab", from: "a", to: "b", label: "x" };
+  const busy = parseSpec({
+    title: "t",
+    beats: [
+      { say: "a", do: [box("a", 2), box("b", 6, 1), box("c", 10, 2), t] },
+      { say: "b", do: [{ op: "move", id: "a", to: [2, 3] }, { op: "move", id: "b", to: [6, 3] }, { op: "camera", to: [4, 4], zoom: 2, wait: 3 }, { op: "camera", wait: 4 }] },
+      { say: "c", do: [{ op: "move", id: "a", to: [2, 5] }, ...Array.from({ length: 3 }, () => ({ op: "trace", ids: ["ab"] }))] },
+      { say: "d", do: [{ op: "camera", zoom: 0.8 }, { op: "camera", wait: 1 }, { op: "camera", wait: 2 }] },
+      { say: "e", hold: 20, do: [{ op: "remove", id: "ab" }, { op: "remove", id: "c" }, { op: "remove", id: "b", wait: 1 }, { op: "remove", id: "a", wait: 2 }] },
+    ],
+  }).spec!;
+  assert.deepEqual(pacing(busy, 60), [
+    { path: "beats.0", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
+    { path: "beats.2.do.0", message: "'a' moves again within three beats; settle the layout once and leave it" },
+    { path: "beats.2", message: "3 packets in one beat; send one or two and let the viewer follow them" },
+    { path: "beats.3.do.0", message: "zoom below 1 shows empty space around the board; zoom 1 already shows all of it" },
+    { path: "beats.4", message: "3 things removed in two beats swaps the scene; keep them and change them, or set emphasis: \"quiet\"" },
+    { path: "beats.4", message: "4 changes in one beat; show 3 or fewer and let each settle (split the beat)" },
+    { path: "beats.4.hold", message: "20 s hold; a still, silent screen loses the viewer, keep it under 15 s" },
+    { path: "beats", message: "5 camera moves; zoom into one part for a detail and back out, once or twice a video" },
+  ]);
+
+  // a finished board may hold up to 8 things for intermediate viewers; quiet parts do not count
+  const board = (quiet: boolean) => parseSpec({ title: "t", beats: [{ do: Array.from({ length: 9 }, (_, k) => box(`p${k}`, 1 + k * 1.7, 0, { w: 1.5, ...(quiet && k < 2 && { emphasis: "quiet" }) })) }] }).spec!;
+  const crowded = (quiet: boolean) => lint(board(quiet), 0).filter((i) => i.message.includes("things in view"));
+  assert.deepEqual(crowded(false).map((i) => i.path), ["beats.0.do.8"]);
+  assert.deepEqual(crowded(true), []);
 });

@@ -10,7 +10,7 @@ The viewer should come away with a picture of **how the system works**: which pa
 
 ## Structure
 
-4. **One scene that grows.** The whole video is one board. It starts nearly empty (the actor and the first part) and grows as the story reaches each part, so the last frame is the whole system and every frame before it is part of it. Change the board, never swap it: add the next part, draw an arrow when something first flows, `set` a component's state, `color` what fails or recovers, `move` things to make room, `camera` zoom into one part for detail and back out, `emphasis: "quiet"` what is now background. Do not `clear` (at most once, for a genuinely new act) and do not remove something just to show a similar thing elsewhere. A viewer should be able to say what changed between any two beats in a few words.
+4. **One scene that grows.** The whole video is one board. It starts nearly empty (the actor and the first part) and grows as the story reaches each part, so the last frame is the whole system and every frame before it is part of it. Change the board, never swap it: add the next part, draw an arrow when something first flows, `set` a component's state, `color` what fails or recovers, `move` a row together to make room (one change), `camera` zoom into one part for a detail and back out a beat or two later (once or twice a video), `emphasis: "quiet"` what is now background. Do not `clear` (at most once, for a genuinely new act) and do not remove something just to show a similar thing elsewhere. A viewer should be able to say what changed between any two beats in a few words.
 5. **One real example, end to end.** Pick one concrete, real-world case and follow it from the trigger to the visible result through every component: a named actor, a specific thing, real-looking data ("Ana buys two mugs, order 1042"; "rider 88 books a trip downtown"; "Sam resets a forgotten password"). Take it from the code: a real request type, a test fixture, seed data, a log line. Name it in the first beats, put it on the packet (`trace` with `label: "order 1042"` and an `icon`) and in the data it lands in (`fill` a queue slot with `"1042"`), and narrate what each part does with *that* case. Keep the same case for the trap and the fix ("the worker crashes while sending Ana's receipt"), so the viewer follows one story instead of abstractions.
 6. **The why, from a real source.** Say why it is built this way, using a reason from docs, an ADR, a commit, a PR or a comment, and list it in `sources`. If no source gives a reason, say it is unknown. Never invent one.
 7. **Problem before solution.** Show the pain, then the fix, then name the idea.
@@ -54,20 +54,21 @@ Every abstract idea in the story gets the component that looks like it. A lock i
 - The picture carries the meaning: icons for every key component and actor, packets for what flows, the matching component for every idea (`highlight` the slot that matters), groups for systems, `set` and `color` changes for state. A viewer with the sound off should still see what moves where and what goes wrong.
 - On-screen text is labels only: component names, what flows on an arrow, a short caption. Never a sentence; the voice explains.
 - Every arrow says what flows along it. Lay components out along the flow with `place` so arrows do not cross; give a request/reply pair `offset: 0.25` each, `curve` an arrow around something in its way.
-- Chapters mark the sections (problem, trap, fix); one `transition: "slide"` at a section change is enough, the rest fade.
+- Chapters mark the sections (problem, trap, fix) on the same board; keep the default fade.
 - Colors carry meaning only: `accent` for the subject, `muted` for context, `good`/`bad` for outcomes. No decoration.
 
 ## Calm pacing
 
 - One idea per beat: one short sentence or two, under ~16 words. Fewer, slower beats beat many quick ones; leave quiet between lines (about 90 spoken words a minute, under 4 new things a minute).
-- Change one or two things per beat, never more than three. Stagger them with `wait` (a second or more apart) and let each settle before the next.
+- Change one or two things per beat, never more than three. Stagger them with `wait` (a second or more apart) and let each settle before the next. A new system (`group`) is a change too: bring its parts in over the next beats, not with it.
+- One new term per beat. A word the viewer does not know yet (signature, draining) gets the whole beat; leave out terms the question does not need.
 - Put each visual change in the beat whose sentence names it, and `focus` what you are talking about.
 - Talk like a colleague: "you", "we", plain words. Make it speakable: numbers as words, no code names, symbols as their meaning.
 
 ## Playground
 
-- The board is the video's big picture, so the viewer recognizes it at once.
+- The board is the video's last frame, so the viewer recognizes it at once.
 - 3 to 6 events. Each makes something visibly happen (a packet moves, a part changes color) and says what happened in one sentence.
 - State matters: at least one event changes a part (crash it, slow it down), and other events behave differently because of it (`if`). That is how the player discovers how the system copes.
 - Every key component has an inspect line: what it does, in one sentence.
-- Same voice rules as the video: under ~18 words per line, labels only on screen.
+- Same voice rules as the video: under ~16 words per line, labels only on screen.
