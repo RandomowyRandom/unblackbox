@@ -1,5 +1,5 @@
 {
   "name": "unblackbox",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Narrated explainer videos of how a system works, written by your agent: components, data flowing between them, one real example traced end to end, a voice. Plus interactive playgrounds."
 }
