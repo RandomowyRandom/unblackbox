@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Label } from "./components/registry.ts";
-import { createWorld, EVENTS, metric, restructure, metricsOf, modelOf, Sim, step, TICK, view, type Input, type Model, type SimEvent } from "./sim.ts";
+import { createWorld, EVENTS, metric, restructure, metricsOf, modelOf, Sim, step, TICK, view, type Input, type Model, type SimEvent, type World } from "./sim.ts";
 import { Action, Add, checkSemantics, Id, resolvePlaces, Spec, type Beat, type Issue } from "./spec.ts";
 
 // A playground is a live board: the sim in `sim` moves entities across the scene, the player pulls levers
@@ -74,10 +74,10 @@ export const Game = Spec.omit({ beats: true }).extend({
 });
 export type Game = z.infer<typeof Game>;
 export type Line = z.infer<typeof Line>;
-type Pred = z.infer<typeof Pred>;
+export type Pred = z.infer<typeof Pred>;
 type WhenT = z.infer<typeof When>;
-type MoveT = z.infer<typeof Move>;
-type ChallengeT = z.infer<typeof Challenge>;
+export type MoveT = z.infer<typeof Move>;
+export type ChallengeT = z.infer<typeof Challenge>;
 
 // Every spoken line with a stable key (used to find its voice) and its path in the game file.
 // `said` lines are one text field (path points at it); inspect lines are a whole {say, do}.
@@ -269,11 +269,12 @@ export const SAMPLE = 2; // seconds between chart points and probe updates: calm
 type Plan = { name: string; sec: number; params?: Record<string, number | string>; removed?: string[]; moves?: MoveT[] };
 type Run = { seed: number; peak: Record<string, number>; end: Record<string, number>; events: SimEvent[]; fired: number[]; ops: Beat["do"]; removed: string[] };
 
-const holds = (p: Pred, r: Run) => {
+type Values = { peak: Record<string, number>; end: Record<string, number> };
+export const holds = (p: Pred, r: Values) => {
   const v = (p.at === "peak" ? r.peak : r.end)[p.metric];
   return p.atMost !== undefined ? v <= p.atMost : v > p.moreThan!;
 };
-const holdsWhen = (w: WhenT, r: Run) => predsOf(w).every((p) => holds(p, r));
+export const holdsWhen = (w: WhenT, r: Values) => predsOf(w).every((p) => holds(p, r));
 const fmt = (p: Pred) => `${p.metric} ${p.atMost !== undefined ? `≤ ${p.atMost}` : `> ${p.moreThan}`}`;
 
 // The metrics anything reads: probes, notes, goals, predicts, the run table. Only these are computed each tick.
@@ -282,6 +283,33 @@ export const neededOf = (game: Game, m: Model) => [...new Set([
   ...game.notes.flatMap((n) => ("when" in n ? predsOf(n.when).map((p) => p.metric) : [])),
   ...game.challenges.flatMap((c) => [...(c.goal ?? []), ...(c.predict?.options.flatMap((o) => predsOf(o.when)) ?? [])].map((p) => p.metric)),
 ])];
+
+// A plan's moves as the inputs of each tick: at their time, or a fault `when: busy` as soon as its node works on
+// something. Shared by the headless runs and the live board, so a challenge plays the way the build proved it.
+export function scheduler(moves: MoveT[] = [], params: Record<string, number | string> = {}, removed: string[] = []): (w: World) => Input[] {
+  const due = new Map<number, Input[]>();
+  const at = (sec: number, input: Input) => { const t = Math.round(sec / TICK); due.set(t, [...(due.get(t) ?? []), input]); };
+  for (const [id, v] of Object.entries(params)) at(0, { param: id, value: v });
+  for (const id of removed) at(0, { remove: id, on: true });
+  const busy: Extract<MoveT, { fault: string }>[] = [];
+  for (const mv of moves) {
+    if ("param" in mv) at(mv.at, { param: mv.param, value: mv.value });
+    else if ("remove" in mv) at(mv.at, { remove: mv.remove, on: true });
+    else if ("burst" in mv) at(mv.at, { burst: mv.burst });
+    else if (mv.when) busy.push(mv);
+    else { at(mv.at, { fault: mv.fault, on: true }); if (mv.for) at(mv.at + mv.for, { fault: mv.fault, on: false }); }
+  }
+  return (w) => {
+    const now = w.tick * TICK;
+    for (const mv of [...busy]) {
+      if (now < mv.at - 1e-9 || !w.nodes[mv.fault.split(".")[0]].slots.some((sl) => sl.phase === "work")) continue;
+      busy.splice(busy.indexOf(mv), 1);
+      at(now, { fault: mv.fault, on: true });
+      if (mv.for) at(now + mv.for, { fault: mv.fault, on: false });
+    }
+    return due.get(w.tick) ?? [];
+  };
+}
 
 // One seeded run of a plan: metric peaks and end values, the sim events, which notes fired, and the board as ops.
 export function simulate(game: Game, m: Model, plan: Plan, seed: number): Run {
@@ -292,27 +320,10 @@ export function simulate(game: Game, m: Model, plan: Plan, seed: number): Run {
   const fired = new Set<number>();
   const truth = game.notes.map(() => false);
   const series = new Map(game.probes.map((p) => [p, [] as number[]]));
-  const due = new Map<number, Input[]>();
-  const at = (sec: number, input: Input) => { const t = Math.round(sec / TICK); due.set(t, [...(due.get(t) ?? []), input]); };
-  for (const [id, v] of Object.entries(plan.params ?? {})) at(0, { param: id, value: v });
-  for (const id of plan.removed ?? []) at(0, { remove: id, on: true });
-  const busyAt: MoveT[] = [];
-  for (const mv of plan.moves ?? []) {
-    if ("param" in mv) at(mv.at, { param: mv.param, value: mv.value });
-    else if ("remove" in mv) at(mv.at, { remove: mv.remove, on: true });
-    else if ("burst" in mv) at(mv.at, { burst: mv.burst });
-    else if (mv.when) busyAt.push(mv);
-    else { at(mv.at, { fault: mv.fault, on: true }); if (mv.for) at(mv.at + mv.for, { fault: mv.fault, on: false }); }
-  }
+  const script = scheduler(plan.moves, plan.params, plan.removed);
   const ticks = Math.round(plan.sec / TICK);
   for (let t = 0; t < ticks; t++) {
-    for (const mv of [...busyAt]) {
-      if (!("fault" in mv) || t * TICK < mv.at || !w.nodes[mv.fault.split(".")[0]].slots.some((sl) => sl.phase === "work")) continue;
-      busyAt.splice(busyAt.indexOf(mv), 1);
-      at(t * TICK, { fault: mv.fault, on: true });
-      if (mv.for) at(t * TICK + mv.for, { fault: mv.fault, on: false });
-    }
-    const out = step(m, w, due.get(t));
+    const out = step(m, w, script(w));
     events.push(...out.events);
     const now: Record<string, number> = Object.fromEntries(names.map((k) => [k, metric(m, w, k)]));
     for (const k of names) peak[k] = Math.max(peak[k], now[k]);

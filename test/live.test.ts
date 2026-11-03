@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseGame } from "../src/game.ts";
+import { parseGame, scheduler } from "../src/game.ts";
 import { Live } from "../src/live.ts";
 
 const example = JSON.parse(readFileSync(new URL("../examples/queue-decoupling.game.json", import.meta.url), "utf8"));
@@ -61,4 +61,30 @@ test("step runs on until something moves, and inspect lines land at the current 
   const said = l.line("inspect.queue", { say: "The queue holds orders.", do: [{ op: "pulse", id: "queue" }] });
   assert.deepEqual(said, { key: "inspect.queue", say: "The queue holds orders." });
   assert.ok(l.t.tracks.find((tr) => tr.el.id === "queue")!.pulses.includes(l.frame));
+});
+
+test("a challenge plays as the build proved it, and a replay with the same inputs is the same run", () => {
+  const c = game!.challenges.find((x) => x.id === "keepIt")!;
+  const script = () => scheduler(c.setup.script, c.setup.params, c.setup.removed);
+  const lost = new Live(game!, model!, { script: script() });
+  lost.advance(c.by * 30);
+  assert.equal(lost.now.lost, 1); // ack take: the crash loses the order it held
+  const fixed = new Live(game!, model!, { script: script() });
+  fixed.input({ param: "ack", value: "done" });
+  fixed.advance(c.by * 30);
+  assert.equal(fixed.now.lost, 0);
+  const base = script();
+  const again = new Live(game!, model!, { script: (w) => [...base(w), ...fixed.log.filter((x) => x.tick === w.tick).map((x) => x.input)] });
+  again.advance(c.by * 30);
+  assert.deepEqual([again.now, again.peak], [fixed.now, fixed.peak]);
+});
+
+test("probes a stage has not revealed are not on the board; the last run rides along on the chart", () => {
+  const l = new Live(game!, model!, { hide: ["lost", "wait"], ghost: { depth: [0, 1, 2, 3, 4, 4] } });
+  l.advance(10 * 30);
+  assert.ok(!ids(l).includes("lost") && !ids(l).includes("wait") && ids(l).includes("depth"));
+  const chart = l.t.tracks.find((tr) => tr.el.id === "depth")!;
+  const last = ((chart.sets.at(-1)?.state ?? chart.el) as { series: unknown }).series as { label: string; points: number[]; color?: string }[];
+  assert.deepEqual(last.map((s) => [s.label, s.color]), [["queue", undefined], ["last run", "muted"]]);
+  assert.equal(last[1].points.length, last[0].points.length);
 });

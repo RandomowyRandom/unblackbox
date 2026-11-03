@@ -10,8 +10,16 @@ const LABELLED = { novice: 3, intermediate: 4, expert: 5 } as const; // packets 
 const MAX_PACKETS = 12; // ponytail: more in flight are not drawn; add a "+N" badge on the arrow if it ever matters
 const WARN = new Set<SimEvent["type"]>(["lost", "dropped", "refused"]); // a ring where it happened
 const STEP_LIMIT = 5; // seconds `stepToNext` runs at most when nothing moves
+const PROBE_SEC = 0.5; // seconds between counter updates
 
 export type Said = { key: string; say: string };
+export type LiveOptions = {
+  seed?: number;
+  script?: (w: World) => Input[]; // what happens on its own: a challenge's setup and script (see scheduler)
+  hide?: string[]; // probe elements not revealed yet
+  ghost?: Record<string, number[]>; // chart id -> the last run's points, drawn muted beside the live series
+};
+const GHOST = "last run";
 
 // In-place filter: the timeline's arrays are shared with the board and the renderer.
 const keep = <T>(xs: T[], ok: (x: T) => boolean) => {
@@ -41,19 +49,26 @@ export class Live {
 
   readonly game: Game;
   readonly m: Model;
+  readonly log: { tick: number; input: Input }[] = []; // the player's inputs, to replay a run exactly
+  readonly peak: Record<string, number> = {};
+  now: Record<string, number> = {};
+  private opts: LiveOptions;
 
-  constructor(game: Game, m: Model, seed = game.sim.seed) {
+  constructor(game: Game, m: Model, opts: LiveOptions = {}) {
     this.game = game;
     this.m = m;
-    this.t = buildTimeline({ ...walkthrough(game), beats: [{ do: game.scene }] }, [{ file: null, sec: 0 }]);
+    this.opts = opts;
+    const scene = game.scene.filter((a) => !opts.hide?.includes(a.id));
+    this.t = buildTimeline({ ...walkthrough(game), beats: [{ do: scene }] }, [{ file: null, sec: 0 }]);
     this.t.beats = []; // the board has no narration track; lines are played by the player
     this.board = { tracks: new Map(this.t.tracks.map((tr) => [tr.el.id, tr])), focus: this.t.focus, camera: this.t.camera, traces: this.t.traces };
-    this.w = createWorld(m, seed);
+    this.w = createWorld(m, opts.seed ?? game.sim.seed);
     this.truth = game.notes.map(() => false);
     this.series = new Map(game.probes.map((p) => [p, []]));
     this.names = neededOf(game, m);
     this.perTick = Math.round(TICK * this.t.fps);
     this.anim = Math.round(TIMING.anim * this.t.fps);
+    for (const tr of this.t.tracks) tr.start = -2 * this.anim; // already drawn at frame 0: a run can wait for the player
   }
 
   input(i: Input) {
@@ -89,7 +104,9 @@ export class Live {
 
   private tick(): Said[] {
     const { m, w, game, frame: f } = this;
-    const o = step(m, w, this.pending.splice(0));
+    const mine = this.pending.splice(0);
+    for (const input of mine) this.log.push({ tick: w.tick, input });
+    const o = step(m, w, [...(this.opts.script?.(w) ?? []), ...mine]);
     this.syncStructure(f);
     this.syncFaults(f);
     for (const op of view(m, w)) this.show(op, f);
@@ -98,11 +115,11 @@ export class Live {
       const tr = WARN.has(e.type) ? this.board.tracks.get(e.at) : undefined;
       if (tr && f - (tr.pulses.at(-1) ?? -Infinity) >= 2 * this.anim) tr.pulses.push(f); // one ring at a time, not one per order
     }
-    const now = Object.fromEntries(this.names.map((k) => [k, metric(m, w, k)]));
-    if ((w.tick - 1) % Math.round(SAMPLE / TICK) === 0) {
-      for (const [p, pts] of this.series) if (pts.push(now[p.metric]) > 40) pts.shift();
-      for (const op of probeOps(game, this.series, now)) this.show(op, f);
-    }
+    const now = (this.now = Object.fromEntries(this.names.map((k) => [k, metric(m, w, k)])));
+    for (const k of this.names) this.peak[k] = Math.max(this.peak[k] ?? 0, now[k]);
+    // charts gain a point every SAMPLE seconds; counters follow within half a second, so a loss shows as it happens
+    if ((w.tick - 1) % Math.round(SAMPLE / TICK) === 0) for (const [p, pts] of this.series) if (pts.push(now[p.metric]) > 40) pts.shift();
+    if ((w.tick - 1) % Math.round(PROBE_SEC / TICK) === 0) for (const op of probeOps(game, this.series, now)) this.show(this.withGhost(op), f);
     return notesFiring(game, o.events, now, this.truth).flatMap((i) => {
       const n = game.notes[i];
       const last = this.said.get(i);
@@ -113,10 +130,25 @@ export class Live {
     });
   }
 
+  // The points the chart's first probe drew, for the next run's ghost.
+  seriesOf(chart: string): number[] {
+    return [...this.series].find(([p]) => p.show === chart)?.[1].slice() ?? [];
+  }
+
+  // A chart's series plus the last run's, cut to the same length so both share the x axis.
+  private withGhost(op: Action): Action {
+    const ghost = op.op === "set" ? this.opts.ghost?.[op.id] : undefined;
+    const series = op.op === "set" && (op.state as { series?: { label: string; points: number[] }[] }).series;
+    if (!ghost || !series || series.length >= 3) return op;
+    const n = Math.max(2, series[0].points.length);
+    const points = ghost.length >= 2 ? ghost.slice(0, n) : [0, 0];
+    return { ...op, state: { series: [...series, { label: GHOST, points: points.length >= 2 ? points : [...points, ...points], color: "muted" }] } } as Action;
+  }
+
   // A state op, only when it changes what is drawn. Colors hold at least one transition, so a busy worker does not
   // flicker between idle and busy; going down shows at once.
   private show(op: Action, f: number) {
-    if (!("id" in op) || typeof op.id !== "string") return;
+    if (!("id" in op) || typeof op.id !== "string" || !this.board.tracks.has(op.id)) return; // a probe not revealed yet
     const key = `${op.op} ${op.id}`;
     const json = JSON.stringify(op);
     if (this.shown.get(key) === json) return;

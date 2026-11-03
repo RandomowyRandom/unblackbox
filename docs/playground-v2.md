@@ -358,3 +358,5 @@ The skill gets a playground chapter:
 3. The playground opens in the guided stages; the full sandbox is the last stage.
 4. Structural edits include add-part kits (a second worker, a cache, a retry) as well as remove-with-bridge. Kits move from phase 5 into phase 4 and bring their own layout slots and fuzz checks.
 5. Topics that are not about flow (git, auth tokens, raft) ship the video only until a protocol kind exists.
+6. A challenge waits for Run after the predict step, so the player sets the levers first: a lever changed a second into the run would act on orders that already moved, and the build's solution moves start at 0 s.
+7. The post-mortem replays from 3 s before the first breach of an "at most" goal to 5 s after it, at half speed, with the same inputs at the same ticks.
