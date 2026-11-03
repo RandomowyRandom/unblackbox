@@ -36,7 +36,7 @@ stdout is JSON, progress goes to stderr, exit 1 on failure.`;
 
 const CODE_THEME = "github-dark-dimmed"; // palette in src/video/theme.ts matches it
 const root = path.dirname(fileURLToPath(import.meta.url));
-const GUIDE = [path.join(root, "..", "AGENTS.md"), path.join(root, "..", ".claude", "skills", "unblackbox", "references", "rules.md")];
+const GUIDE = [path.join(root, "..", "AGENTS.md"), path.join(root, "..", "skills", "unblackbox", "references", "rules.md")];
 const cacheDir = path.join(root, "..", ".unblackbox", "cache"); // next to the tool, not the cwd, so the cache is always found
 const print = (o: unknown) => console.log(JSON.stringify(o, null, 2));
 const log = (m: string) => console.error(m);
@@ -115,7 +115,7 @@ async function buildGame(file: string | undefined, out: string | undefined, tts:
   const sheet = path.join(dir, "sheet.png");
   await renderStill({ ...(await select(await serve(), "sheet", { t, frames: t.beats.map((_, b) => settledFrame(t, b)), labels: ["board", ...linesOf(game).map((l) => l.key)] })), output: sheet, frame: 0 });
   const warnings = toGamePaths(game, lint(spec, 0, BOARD_MAX));
-  if (missing.length) warnings.push({ path: "", message: `${missing.join(" and ")} not built yet: run \`npm run play:build\` in the unblackbox repo once` });
+  if (missing.length) warnings.push({ path: "", message: `${missing.join(" and ")} not built yet: run the unblackbox setup once with playgrounds (\`node scripts/setup.mjs --playground\`, needs Rust)` });
   return { ok: true, out: dir, exe: missing.length ? null : exe, sheet, warnings };
 }
 

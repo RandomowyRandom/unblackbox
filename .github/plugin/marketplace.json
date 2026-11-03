@@ -1,0 +1,8 @@
+{
+  "name": "unblackbox",
+  "description": "Narrated explainer videos of how a system works, written by your agent: components, data flowing between them, one real example traced end to end, a voice. Plus interactive playgrounds.",
+  "owner": { "name": "RandomowyRandom", "url": "https://github.com/RandomowyRandom" },
+  "plugins": [
+    { "name": "unblackbox", "description": "Narrated explainer videos of how a system works, written by your agent: components, data flowing between them, one real example traced end to end, a voice. Plus interactive playgrounds.", "source": "./", "category": "productivity", "skills": "skills/" }
+  ]
+}

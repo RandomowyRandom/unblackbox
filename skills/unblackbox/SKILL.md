@@ -7,7 +7,7 @@ description: Make short narrated explainer videos that show how a system works (
 
 You map the system, write one JSON spec, verify it, and render it. Nothing else. A 2 to 3 minute video should take about 10 minutes. If the user wants it, a playground follows (step 5).
 
-Run `unblackbox <command>` if it is on PATH, otherwise `node <unblackbox repo>/src/cli.ts <command>`. First run `unblackbox guide` once. It prints the spec reference and the rules the finished video must meet. Both are short, and the rules are what make the video worth watching: system level, visual and calm.
+Run `unblackbox <command>`. If the command is not found or fails with a missing module, run the `setup` skill first (`/unblackbox:setup` in Claude Code); it installs the tool and prints the exact command to use. First run `unblackbox guide` once. It prints the spec reference and the rules the finished video must meet. Both are short, and the rules are what make the video worth watching: system level, visual and calm.
 
 ## 1. Map the system
 

@@ -1,6 +1,6 @@
 # unblackbox tool reference
 
-You write a JSON spec. unblackbox turns it into a narrated explainer video of a system: dark canvas, components with icons inside system boundaries, labelled arrows with packets moving along them, an occasional glimpse of code, calm pacing. The rules the finished video must meet are printed after this reference by `unblackbox guide` (file `.claude/skills/unblackbox/references/rules.md`).
+You write a JSON spec. unblackbox turns it into a narrated explainer video of a system: dark canvas, components with icons inside system boundaries, labelled arrows with packets moving along them, an occasional glimpse of code, calm pacing. The rules the finished video must meet are printed after this reference by `unblackbox guide` (file `skills/unblackbox/references/rules.md`).
 
 ## Commands
 
@@ -116,6 +116,6 @@ A playground is a small Tauri app where the viewer plays with the system the vid
 - `scene`: add ops only; no code elements. Everything else refers to these elements.
 - `intro`, `inspect.<id>` and every outcome are lines `{ say, do }`. Their `do` may only use `trace`, `color`, `fill`, `focus`, `unfocus`, `camera` and `move`.
 - `events`: up to 8 buttons `{ id, label, icon, outcomes }`. A press runs the first outcome whose `if` matches; `if` maps element ids to the color they have right now (arrows start `muted`, everything else `accent`). Colors are the sandbox's state, so a `color` op changes what later presses do. The last outcome has no `if`.
-- One-time setup in the unblackbox repo: `npm run play:build` (needs Rust). Without it `game` still writes the data and the web build and warns that the exe is missing.
+- One-time setup: the `setup` skill with playgrounds, or `node scripts/setup.mjs --playground` (needs Rust). Without it `game` still writes the data and the web build and warns that the exe is missing.
 
 Example: `examples/queue-decoupling.game.json`.

@@ -3,8 +3,8 @@
   "audience": "intermediate",
   "sources": [
     "package.json (agent-driven CLI: JSON spec to narrated explainer video)",
-    ".claude/skills/unblackbox/SKILL.md (map, write spec, validate + still, render; playground on request)",
-    ".claude/skills/unblackbox/references/rules.md (video rules from learning research)",
+    "skills/unblackbox/SKILL.md (map, write spec, validate + still, render; playground on request)",
+    "skills/unblackbox/references/rules.md (video rules from learning research)",
     "AGENTS.md (validate under 1 s, still about 5 s, render about as long as the video, game about 20 s)",
     "src/spec.ts (schema, order checks, lint: errors block, warnings advise)",
     "src/tts.ts (Kokoro local speech, cache per sentence, provider seam)",
@@ -162,7 +162,7 @@
       "do": [
         { "op": "clear" },
         { "op": "add", "type": "icon", "id": "f1", "icon": "folder-open", "label": "src/", "size": "l", "at": [2.4, 4.5], "wait": 0.3 },
-        { "op": "add", "type": "icon", "id": "f2", "icon": "book-open", "label": ".claude/skills/", "size": "l", "at": [6.13, 4.5], "wait": 0.8 },
+        { "op": "add", "type": "icon", "id": "f2", "icon": "book-open", "label": "skills/", "size": "l", "at": [6.13, 4.5], "wait": 0.8 },
         { "op": "add", "type": "icon", "id": "f3", "icon": "gamepad-2", "label": "play/", "size": "l", "at": [9.87, 4.5], "wait": 1.3 },
         { "op": "add", "type": "icon", "id": "f4", "icon": "file-braces", "label": "examples/", "size": "l", "at": [13.6, 4.5], "wait": 1.8 }
       ]

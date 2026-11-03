@@ -1,0 +1,2 @@
+description = "Install or repair the unblackbox tool (dependencies, command, voice model, optional playground)"
+prompt = "Use the unblackbox `setup` skill to install or repair the unblackbox tool, following its steps. {{args}}"

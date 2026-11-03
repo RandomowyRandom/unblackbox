@@ -1,0 +1,20 @@
+{
+  "name": "unblackbox",
+  "version": "0.1.0",
+  "description": "Narrated explainer videos of how a system works, written by your agent: components, data flowing between them, one real example traced end to end, a voice. Plus interactive playgrounds.",
+  "author": { "name": "RandomowyRandom", "url": "https://github.com/RandomowyRandom" },
+  "homepage": "https://github.com/RandomowyRandom/unblackbox",
+  "repository": "https://github.com/RandomowyRandom/unblackbox",
+  "keywords": ["explainer", "video", "architecture", "onboarding", "documentation"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "unblackbox",
+    "shortDescription": "Explainer videos of how a system works",
+    "developerName": "RandomowyRandom",
+    "category": "Productivity",
+    "capabilities": ["Instructions"],
+    "websiteURL": "https://github.com/RandomowyRandom/unblackbox",
+    "defaultPrompt": ["Make a video explaining how this system works."],
+    "logo": "./assets/icon.png"
+  }
+}

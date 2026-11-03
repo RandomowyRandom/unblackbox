@@ -1,0 +1,12 @@
+{
+  "name": "unblackbox",
+  "interface": { "displayName": "unblackbox" },
+  "plugins": [
+    {
+      "name": "unblackbox",
+      "source": { "source": "url", "url": "https://github.com/RandomowyRandom/unblackbox.git", "ref": "main" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

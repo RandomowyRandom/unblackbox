@@ -42,37 +42,83 @@ Reading a codebase tells you what each file does. It rarely tells you how the pa
 
 | part | file | what it does |
 |---|---|---|
-| Skill | [`.claude/skills/unblackbox/`](.claude/skills/unblackbox/SKILL.md) | tells the agent how to map a system and the rules a good video meets |
+| Skill | [`skills/unblackbox/`](skills/unblackbox/SKILL.md) | tells the agent how to map a system and the rules a good video meets |
 | Checker | [`src/spec.ts`](src/spec.ts) | zod schema, order checks (errors block) and research-backed lint (warnings advise) |
 | Voice | [`src/tts.ts`](src/tts.ts) | Kokoro TTS, cached per sentence so edits only re-voice what changed |
 | Timeline | [`src/timeline.ts`](src/timeline.ts) | pure function: spec + speech seconds → frame numbers for every element |
 | Renderer | [`src/video/`](src/video) | Remotion + React draw each frame; Code Hike for the rare code glimpse |
 | Playground | [`src/game.ts`](src/game.ts), [`play/`](play) | a prebuilt Tauri player that loads a game folder; no Rust compile per game |
 
-## Quick start
+## Install
 
-Needs Node 24 or newer (it runs the TypeScript sources directly).
+You need Node 24 or newer and about 2 GB of disk (dependencies, the voice model, a headless browser). Playgrounds also need Rust. Install the plugin in your agent, then run its setup once; it installs the tool, puts `unblackbox` on your PATH and makes a test still.
+
+### Claude Code
+
+```
+/plugin marketplace add RandomowyRandom/unblackbox
+```
+```
+/plugin install unblackbox@unblackbox
+```
+```
+/unblackbox:setup
+```
+
+Send each line as its own prompt. On Claude Code 2.1.275 or later the first two can be one: `/plugin install unblackbox --marketplace RandomowyRandom/unblackbox`. The desktop app's Code tab takes the same commands.
+
+### Codex
 
 ```bash
-npm install
-npm link          # optional: puts `unblackbox` on your PATH
+codex plugin marketplace add RandomowyRandom/unblackbox
+codex plugin add unblackbox@unblackbox
 ```
+
+Then ask Codex to "set up unblackbox".
+
+### GitHub Copilot CLI
+
+```bash
+copilot plugin marketplace add RandomowyRandom/unblackbox
+copilot plugin install unblackbox@unblackbox
+```
+
+Then run `/unblackbox:setup`.
+
+### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/RandomowyRandom/unblackbox
+```
+
+Then run `/unblackbox:setup`.
+
+### Any other agent with Agent Skills
+
+Copy [`skills/unblackbox`](skills/unblackbox) and [`skills/setup`](skills/setup) into your agent's skills folder and ask it to "set up unblackbox". The setup skill clones the tool to `~/.unblackbox/app` when only the skill folders are present.
+
+### By hand
+
+```bash
+git clone https://github.com/RandomowyRandom/unblackbox
+node unblackbox/scripts/setup.mjs                # add --playground to build the playground player
+```
+
+Setup is safe to repeat. Run it again after updating the plugin: an update brings a fresh copy without dependencies.
+
+## Use it
+
+Ask your agent for a video:
+
+> make a video explaining how our checkout queue works
+
+The [`unblackbox` skill](skills/unblackbox/SKILL.md) takes it from there: map the system, write the spec, validate, check the contact sheet, render. `unblackbox guide` prints everything an agent needs in one go. Or drive it yourself:
 
 ```bash
 unblackbox validate examples/queue-decoupling.json   # under 1 s: errors + warnings with paths
 unblackbox still examples/queue-decoupling.json      # ~5 s: out/queue-decoupling-sheet.png, every beat in one image
 unblackbox render examples/queue-decoupling.json     # out/queue-decoupling.mp4 + .srt
 ```
-
-Without `npm link`, use `node src/cli.ts <command>`. The first render downloads the Kokoro model once.
-
-### With an agent
-
-Open this repo (or a repo that has the skill) in Claude Code and ask for a video:
-
-> make a video explaining how our checkout queue works
-
-The [`unblackbox` skill](.claude/skills/unblackbox/SKILL.md) takes it from there: map the system, write the spec, validate, check the contact sheet, render. `unblackbox guide` prints everything an agent needs in one go.
 
 ## A spec, in short
 
@@ -114,7 +160,7 @@ Every command prints JSON to stdout, so agents can read the result.
 A playground is a small desktop app over the video's board: buttons trigger events, clicking a component explains it, with the same visuals and voice. Element colors are its state, so a crashed worker changes what the next order does.
 
 ```bash
-npm run play:build                                   # once; needs Rust (rustup) and WebView2
+node scripts/setup.mjs --playground                  # once; builds the player, needs Rust
 unblackbox game examples/queue-decoupling.game.json  # ~20 s → out/queue-decoupling-play/
 unblackbox play out/queue-decoupling-play            # or double-click the exe in that folder
 ```
@@ -124,7 +170,9 @@ unblackbox play out/queue-decoupling-play            # or double-click the exe i
 ```
 src/                  the CLI: spec + lint, TTS, timeline, Remotion video, playground data
 play/                 the playground runtime (React + @remotion/player) and its Tauri shell
-.claude/skills/       the agent skill and the video rules
+skills/               the agent skills (unblackbox, setup) and the video rules
+scripts/setup.mjs     one-time setup that /unblackbox:setup runs
+.claude-plugin/ ...   plugin manifests: Claude Code, Codex (.codex-plugin, .agents), Copilot (.github/plugin), Gemini
 examples/             a system video, a small code video, a playground
 docs/                 this project's own overview video and its spec
 reports/              the research the rules come from
