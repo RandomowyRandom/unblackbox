@@ -59,3 +59,19 @@ test("only a badge has state, and its set is validated", () => {
   assert.deepEqual(issues(spec("callout", { side: "top" })).map((i) => i.path), ["beats.0.do.1.side"]);
   assert.deepEqual(issues(spec("bubble", { at: [2, 2] })).map((i) => i.path), ["beats.0.do.1"]);
 });
+
+test("blank text is an error on the field, on add and on set", () => {
+  assert.deepEqual(issues(spec("callout", { text: "  " })), [{ path: "beats.0.do.1.text", message: "write some text; it cannot be blank" }]);
+  assert.deepEqual(issues(spec("brace", { label: "" })).map((i) => i.path), ["beats.0.do.1.label"]);
+  assert.deepEqual(issues(spec("bubble", { text: "" })).map((i) => i.path), ["beats.0.do.1.text"]);
+  assert.deepEqual(issues(spec("badge", {}, { op: "set", id: "a", state: { text: " " } })),
+    [{ path: "beats.0.do.2.state.text", message: "write some text; it cannot be blank" }]);
+});
+
+test("a brace between two points needs them spread along its side", () => {
+  assert.deepEqual(issues(spec("brace", { from: [2, 2], to: [2, 5] })),
+    [{ path: "beats.0.do.1", message: "brace ends [2,2] and [2,5] line up across side 'below'; spread them along it or use side left or right" }]);
+  assert.deepEqual(issues(spec("brace", { from: [2, 2], to: [2, 5], side: "left" })), []);
+  assert.deepEqual(issues(spec("brace", { from: [2, 2], to: [6, 2], side: "right" })).map((i) => i.message.slice(0, 41)),
+    ["brace ends [2,2] and [6,2] line up across"]);
+});
