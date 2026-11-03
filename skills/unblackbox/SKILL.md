@@ -14,13 +14,14 @@ Run `unblackbox <command>`. If the command is not found or fails with a missing 
 Work at the level of systems and components, not functions. That is what the video shows, and it is also faster to research. Read the README, docs and folder structure, and find:
 - the main parts (services, modules, key classes) and what each one is for;
 - how they talk to each other;
-- one concrete, real-world case (a real request type, a test fixture, seed data) and its path through them, from trigger to result. The video follows that case end to end.
+- one concrete, real-world case (a real request type, a test fixture, seed data) and its path through them, from trigger to result. The video follows that case end to end;
+- the abstract ideas the viewer must grasp (a cache, a lock, a retry, a state machine, a quorum, a race) and the component that shows each one directly. Run `unblackbox components` for the list and use the concept map in the rules; draw an idea as a plain box only when no component fits.
 
 Open source files only to confirm how parts connect and to check claims; you do not need function-level detail. Find why it is built this way from docs, ADRs, CHANGELOG, comments or `git log -S <term>`. Every claim must be true in the code.
 
 ## 2. Write the spec
 
-Write `<topic>.json` following the rules from `unblackbox guide`. Copy the structure of `examples/queue-decoupling.json`: systems as groups, components as boxes with icons, actors as icons, one real case ("order 1042") traced end to end as a labelled packet and kept through the trap and the fix, little text. Put the files and commits you used in `sources`.
+Write `<topic>.json` following the rules from `unblackbox guide`. Copy the structure of `examples/queue-decoupling.json`: systems as groups, components as boxes with icons, actors as icons, one real case ("order 1042") traced end to end as a labelled packet and kept through the trap and the fix, little text. Show each idea with its component (`unblackbox components <type>` prints its fields, what `set` can change, and an example) and change it with `set` as the story moves. Lay things out with `place` instead of guessing coordinates. Put the files and commits you used in `sources`.
 
 ## 3. Verify
 

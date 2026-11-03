@@ -4,3 +4,4 @@ out
 play/dist
 play/src-tauri/target
 play/src-tauri/gen
+.claude/worktrees/

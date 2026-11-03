@@ -4,7 +4,7 @@ The viewer should come away with a picture of **how the system works**: which pa
 
 ## Level: systems and components, not functions
 
-1. **Show parts, not code.** The cast is systems (`group`), key components and classes (`box` with an icon), actors (`icon`) and the data that moves between them (`trace` packets, `cells`). Name a class only if it is a key component. Never narrate function names, variables or line-level logic.
+1. **Show parts, not code.** The cast is systems (`group`), key components and classes (`box` with an icon), actors (`icon`), the data that moves between them (`trace` packets) and the ideas that make the design work, each drawn with the component that shows it (see "Show the idea" below). Name a class only if it is a key component. Never narrate function names, variables or line-level logic.
 2. **Code is rare.** At most 2 or 3 beats, each a glimpse of a key type or interface (8 lines or fewer) that makes an idea concrete. Most system videos need none.
 3. **One question.** The first beat states it ("what happens between pressing Pay and the receipt arriving?"). 2 to 3 minutes, about 14 to 18 beats.
 
@@ -18,11 +18,43 @@ The viewer should come away with a picture of **how the system works**: which pa
 9. **One prediction.** One `think` beat (3 to 5 s) at a section boundary, phrased as a question and answered in the next beat, ideally with a trace.
 10. **A way out.** End with a one-line takeaway and the component or folder to look at next.
 
+## Show the idea, not a box
+
+Every abstract idea in the story gets the component that looks like it. A lock is a padlock that closes, not a box labelled "Lock"; a timeout is a ring that drains; a retry is a loop. Change it with `set` while the narration says what happens (the needle rises, the node goes down), and `pulse` it when you point at it. Use a plain `box` only for a component of the system itself, and when no component fits the idea.
+
+| the idea | component |
+|---|---|
+| cache, lookup, session store, index | `kv` (a DB table: `table`) |
+| queue, batch, buckets | `cells`; an ordered, durable log with consumers: `log` |
+| call stack, undo, LIFO | `stack` |
+| ring buffer, consistent hashing, round robin | `ring` |
+| memory pages, bitmap, heatmap | `grid`; stack vs heap, buffers: `memory` |
+| binary format, header, flags | `bytes` |
+| hierarchy, DOM, B-tree | `tree`; dependencies, network: `graph` |
+| lifecycle, protocol states, circuit breaker | `states` (the switch itself: `toggle`) |
+| decision logic, algorithm | `flow` |
+| layers, middleware, OSI | `layers`; CI, ETL, request pipeline: `pipeline` |
+| where code lives | `files`; history, versions, MVCC: `commits` |
+| time, TTL, ordering | `timeline`; timeout, lease, backoff: `timer` |
+| handshake, request/reply protocol | `sequence`; threads, races, parallel vs serial: `lanes` |
+| event loop, retry loop, reconcile loop | `cycle` |
+| mutex, lease, leader lock | `lock` |
+| rate limit, semaphore, pool | `tokens` |
+| load, saturation | `gauge`; catch-up, migration: `progress`; retries, versions, latency: `counter`; health checks: `checklist` |
+| database, disk, bucket | `store`; replication, quorum, failover: `cluster`; partitioning: `shards` |
+| network partition, trust boundary | `barrier`; what the user sees: `device` |
+| event payload, message | `message`; HTTP call: `request`; auth token: `token`; data shape, config: `json` |
+| a change, before/after code or config | `diff`; commands and their output: `terminal` |
+| hashing, encryption, serialization, compiling | `transform` |
+| amounts compared | `bars`; over time: `chart`; shares: `donut`; trade-offs: `compare`; overlap: `venn`; drop-off: `funnel` |
+| point at a detail, group a range, tag a state, an actor's intent | `callout`, `brace`, `badge`, `bubble` |
+
 ## Visual, not textual
 
-- The picture carries the meaning: icons for every key component and actor, packets for what flows, cells for queues and collections (`highlight` the slot that matters), groups for systems, `color` changes for state. A viewer with the sound off should still see what moves where and what goes wrong.
+- The picture carries the meaning: icons for every key component and actor, packets for what flows, the matching component for every idea (`highlight` the slot that matters), groups for systems, `set` and `color` changes for state. A viewer with the sound off should still see what moves where and what goes wrong.
 - On-screen text is labels only: component names, what flows on an arrow, a short caption. Never a sentence; the voice explains.
-- Every arrow says what flows along it. Lay components out along the flow so arrows do not cross; give a request/reply pair `offset: 0.25` each.
+- Every arrow says what flows along it. Lay components out along the flow with `place` so arrows do not cross; give a request/reply pair `offset: 0.25` each, `curve` an arrow around something in its way.
+- Chapters mark the sections (problem, trap, fix); one `transition: "slide"` at a section change is enough, the rest fade.
 - Colors carry meaning only: `accent` for the subject, `muted` for context, `good`/`bad` for outcomes. No decoration.
 
 ## Calm pacing
