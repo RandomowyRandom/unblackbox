@@ -144,8 +144,8 @@ async function buildGame(file: string | undefined, out: string | undefined, tts:
   const sheet = path.join(dir, "sheet.png");
   await renderStill({ ...(await select(await serve(), "sheet", { t, frames: t.beats.map((_, b) => settledFrame(t, b)), labels: ["board", ...shots.map((s) => s.label)] })), output: sheet, frame: 0 });
   if (missing.length) warnings.push({ path: "", message: `${missing.join(" and ")} not built yet: run the unblackbox setup once with playgrounds (\`node scripts/setup.mjs --playground\`, needs Rust)` });
-  // ponytail: remove once play/main.tsx runs the sim (playground phase 2)
-  warnings.push({ path: "", message: "this player build shows the board and inspect lines only; levers, stages and challenges play once the live board lands. `--check` and sheet.png already run the sim" });
+  // ponytail: remove once the player runs stages and challenges (playground phase 3)
+  if (game.stages || game.challenges.length) warnings.push({ path: "", message: "the player runs the live sandbox (every lever and fault); stages and challenges are checked but not played yet" });
   return { ok: true, out: dir, exe: missing.length ? null : exe, sheet, warnings };
 }
 

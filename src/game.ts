@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Label } from "./components/registry.ts";
-import { createWorld, EVENTS, metric, metricsOf, modelOf, Sim, step, TICK, view, type Input, type Model, type SimEvent } from "./sim.ts";
+import { createWorld, EVENTS, metric, restructure, metricsOf, modelOf, Sim, step, TICK, view, type Input, type Model, type SimEvent } from "./sim.ts";
 import { Action, Add, checkSemantics, Id, resolvePlaces, Spec, type Beat, type Issue } from "./spec.ts";
 
 // A playground is a live board: the sim in `sim` moves entities across the scene, the player pulls levers
@@ -264,10 +264,10 @@ export function parseGame(input: unknown): { game: Game; model: Model; issues: [
 const SANDBOX_SEC = 60;
 const SEEDS = 4;
 const CHART_POINTS = 30;
-const SAMPLE = 2; // seconds between chart points
+export const SAMPLE = 2; // seconds between chart points and probe updates: calm enough to read
 
 type Plan = { name: string; sec: number; params?: Record<string, number | string>; removed?: string[]; moves?: MoveT[] };
-type Run = { seed: number; peak: Record<string, number>; end: Record<string, number>; events: SimEvent[]; fired: number[]; ops: Beat["do"] };
+type Run = { seed: number; peak: Record<string, number>; end: Record<string, number>; events: SimEvent[]; fired: number[]; ops: Beat["do"]; removed: string[] };
 
 const holds = (p: Pred, r: Run) => {
   const v = (p.at === "peak" ? r.peak : r.end)[p.metric];
@@ -277,7 +277,7 @@ const holdsWhen = (w: WhenT, r: Run) => predsOf(w).every((p) => holds(p, r));
 const fmt = (p: Pred) => `${p.metric} ${p.atMost !== undefined ? `≤ ${p.atMost}` : `> ${p.moreThan}`}`;
 
 // The metrics anything reads: probes, notes, goals, predicts, the run table. Only these are computed each tick.
-const neededOf = (game: Game, m: Model) => [...new Set([
+export const neededOf = (game: Game, m: Model) => [...new Set([
   "lost", ...Object.keys(m.capacity).map((q) => `${q}.length`), ...game.probes.map((p) => p.metric),
   ...game.notes.flatMap((n) => ("when" in n ? predsOf(n.when).map((p) => p.metric) : [])),
   ...game.challenges.flatMap((c) => [...(c.goal ?? []), ...(c.predict?.options.flatMap((o) => predsOf(o.when)) ?? [])].map((p) => p.metric)),
@@ -316,20 +316,27 @@ export function simulate(game: Game, m: Model, plan: Plan, seed: number): Run {
     events.push(...out.events);
     const now: Record<string, number> = Object.fromEntries(names.map((k) => [k, metric(m, w, k)]));
     for (const k of names) peak[k] = Math.max(peak[k], now[k]);
-    game.notes.forEach((n, i) => {
-      if ("on" in n) { if (out.events.some((e) => e.type === n.on && (!n.at || e.at === n.at))) fired.add(i); return; }
-      const ok = predsOf(n.when).every((p) => (p.atMost !== undefined ? now[p.metric] <= p.atMost : now[p.metric] > p.moreThan!));
-      if (ok && !truth[i]) fired.add(i);
-      truth[i] = ok;
-    });
+    for (const i of notesFiring(game, out.events, now, truth)) fired.add(i);
     if (t % Math.round(SAMPLE / TICK) === 0) for (const [p, pts] of series) pts.push(now[p.metric]);
   }
   const end = Object.fromEntries(names.map((k) => [k, metric(m, w, k)]));
-  return { seed, peak, end, events, fired: [...fired].sort((a, b) => a - b), ops: [...view(m, w), ...probeOps(game, series, end)] };
+  return { seed, peak, end, events, fired: [...fired].sort((a, b) => a - b), ops: [...view(m, w), ...probeOps(game, series, end)], removed: [...w.removed] };
+}
+
+// Notes that fire on this tick: an event note when its event happens, a `when` note when its condition turns true.
+// `truth` carries each `when` note's last value from tick to tick.
+export function notesFiring(game: Game, events: SimEvent[], now: Record<string, number>, truth: boolean[]): number[] {
+  return game.notes.flatMap((n, i) => {
+    if ("on" in n) return events.some((e) => e.type === n.on && (!n.at || e.at === n.at)) ? [i] : [];
+    const ok = predsOf(n.when).every((p) => (p.atMost !== undefined ? now[p.metric] <= p.atMost : now[p.metric] > p.moreThan!));
+    const rose = ok && !truth[i];
+    truth[i] = ok;
+    return rose ? [i] : [];
+  });
 }
 
 // Probe readouts as set ops on their elements: counters show the value now, charts the last points.
-function probeOps(game: Game, series: Map<Game["probes"][number], number[]>, end: Record<string, number>): Beat["do"] {
+export function probeOps(game: Game, series: Map<Game["probes"][number], number[]>, end: Record<string, number>): Beat["do"] {
   return game.probes.flatMap((p): Beat["do"] => {
     const el = game.scene.find((a) => a.id === p.show)!;
     if (el.type !== "chart") return [{ op: "set", id: p.show, state: { value: end[p.metric] } }];
@@ -459,7 +466,13 @@ const dedupe = (xs: Issue[]) => [...new Map(xs.map((x) => [x.path, x])).values()
 export function snapshots(game: Game, m: Model): { label: string; ops: Beat["do"] }[] {
   const seed = game.sim.seed;
   const plans: Plan[] = [{ name: "defaults", sec: SANDBOX_SEC }, ...game.challenges.flatMap((c) => [challengePlan(c, `${c.id}: setup`), ...(c.solution ? [challengePlan(c, `${c.id}: solution`, c.solution)] : [])])];
-  return plans.map((p) => ({ label: p.name, ops: simulate(game, m, p, seed).ops }));
+  let removed: string[] = []; // the sheet's beats build on each other: undo the last snapshot's removals
+  return plans.map((p) => {
+    const run = simulate(game, m, p, seed);
+    const ops = [...restructure(m, game.scene, removed, run.removed), ...run.ops];
+    removed = run.removed;
+    return { label: p.name, ops };
+  });
 }
 
 export type Bundle = { game: Game; voices: Record<string, { file: string | null; sec: number }> };

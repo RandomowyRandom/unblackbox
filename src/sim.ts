@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Icon, Id, type Add, type Issue } from "./spec.ts";
+import { Icon, Id, refsOf, type Add, type Issue } from "./spec.ts";
 import { Label } from "./components/registry.ts";
 
 // A small deterministic simulation that runs a playground board: entities (orders, requests) are made by
@@ -243,13 +243,13 @@ const waiting = (s: NodeState) => s.items.filter((i) => !i.taken).length;
 
 // Where `id` sends now: its arrow, or the bridge around removed nodes (latencies add up, the first arrow's retry holds).
 type Route = { link: string; to: string; cfg: LinkCfg; skipped: string[] };
-function route(m: Model, w: World, id: string): Route | null {
+function route(m: Model, removed: string[], id: string): Route | null {
   let link = m.out[id];
   if (!link) return null;
   let to = m.links[link].to;
   let cfg = cfgOf(m, link);
   const skipped: string[] = [];
-  while (w.removed.includes(to)) {
+  while (removed.includes(to)) {
     const next = m.out[to];
     cfg = { ...cfg, latency: cfg.latency + cfgOf(m, next).latency };
     skipped.push(to);
@@ -446,7 +446,7 @@ export function step(m: Model, w: World, inputs: Input[] = []): Out {
   for (const id of ids) {
     const node = m.sim.nodes[id];
     const s = w.nodes[id];
-    const r = route(m, w, id);
+    const r = route(m, w.removed, id);
     if (!r || isDown(w, id)) continue;
     if (node.kind === "queue") {
       // hand out the oldest waiting one while the next part has room; a refusing worker only gets one per free slot
@@ -476,7 +476,7 @@ export function step(m: Model, w: World, inputs: Input[] = []): Out {
   }
   for (const p of [...w.pending]) {
     if (w.tick < p.due) continue;
-    const r = route(m, w, p.from);
+    const r = route(m, w.removed, p.from);
     if (!r || r.to !== p.to || !flag(w, p.retry.enabled) || p.tries >= p.retry.max) {
       w.pending.splice(w.pending.indexOf(p), 1); // gives up: what happens now depends on whether a copy still gets there
       settle(m, w, o, p.link, p.e, true);
@@ -537,6 +537,7 @@ export type ViewOp = { op: "fill"; id: string; items: string[]; highlight: numbe
 export function view(m: Model, w: World): ViewOp[] {
   return Object.entries(m.sim.nodes).flatMap(([id, node]): ViewOp[] => {
     const s = w.nodes[id];
+    if (w.removed.includes(id)) return [];
     if (node.kind === "queue") {
       const items = s.items.map((i) => String(i.e.n));
       const highlight = s.items.flatMap((i, k) => (i.taken ? [k] : []));
@@ -547,4 +548,35 @@ export function view(m: Model, w: World): ViewOp[] {
     const badge: ViewOp[] = node.kind === "worker" && node.show ? [{ op: "set", id: node.show.concurrency, state: { text: `x${slotsOf(w, node)}` } }] : [];
     return [{ op: "color", id, color }, ...badge];
   });
+}
+
+// The board with parts taken out: what disappears (the parts, their arrows, what is attached to them, in the
+// order they can be removed) and the bridge arrows drawn in their place, from what fed them to what they fed.
+export function structureOf(m: Model, scene: Add[], removed: string[]): { hidden: string[]; bridges: Add[] } {
+  const arrows = scene.filter((a) => a.type === "arrow" && (removed.includes(String(a.from)) || removed.includes(String(a.to)))).map((a) => a.id);
+  const gone = new Set([...removed, ...arrows]);
+  const attached = scene.filter((a) => !gone.has(a.id) && refsOf(a).some((r) => gone.has(r.split(".")[0]))).map((a) => a.id);
+  const bridges = Object.keys(m.sim.nodes).filter((id) => !removed.includes(id)).flatMap((id) => {
+    const r = route(m, removed, id);
+    const last = r?.skipped.at(-1);
+    if (!r || !last) return [];
+    const label = (m.sim.nodes[last] as { removable?: { bridge: string } }).removable?.bridge;
+    return [{ op: "add", type: "arrow", id: r.link, from: id, to: r.to, label } as Add];
+  });
+  return { hidden: [...attached, ...arrows, ...removed], bridges };
+}
+
+// The ops that turn the board with `was` taken out into the board with `now` taken out: what goes away, then
+// what comes back (parts before what attaches to them) and the new bridges.
+export function restructure(m: Model, scene: Add[], was: string[], now: string[]): ({ op: "remove"; id: string } | Add)[] {
+  const a = structureOf(m, scene, was);
+  const b = structureOf(m, scene, now);
+  const same = (x: Add) => (y: Add) => JSON.stringify(x) === JSON.stringify(y);
+  const byId = new Map(scene.map((el) => [el.id, el]));
+  return [
+    ...a.bridges.filter((x) => !b.bridges.some(same(x))).map((x) => ({ op: "remove" as const, id: x.id })),
+    ...b.hidden.filter((id) => !a.hidden.includes(id)).map((id) => ({ op: "remove" as const, id })),
+    ...[...a.hidden].reverse().filter((id) => !b.hidden.includes(id)).map((id) => byId.get(id)!),
+    ...b.bridges.filter((x) => !a.bridges.some(same(x))),
+  ];
 }
