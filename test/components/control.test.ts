@@ -92,3 +92,19 @@ test("control: lint flags what will not read at a glance", () => {
   assert.deepEqual(msgs("counter", { label: "rows", value: "1234567" }), ["counter value '1234567' is long; round it (e.g. '1.2k') so it reads at a glance"]);
   assert.deepEqual(msgs("checklist", { items: ["a", "b", "c", "d", "e"].map((label) => ({ label })) }), ["5 items; 4 or fewer read at a glance"]);
 });
+
+// regressions: empty words drew blanks, and huge numbers overflowed the readouts
+test("control: empty words and out-of-range numbers are rejected with their path", () => {
+  const cases: [string, object, string][] = [
+    ["toggle", { label: "flag", on: true, onLabel: "" }, "beats.0.do.0.onLabel"],
+    ["tokens", { label: "pool", capacity: 4, filled: 2, rate: "" }, "beats.0.do.0.rate"],
+    ["counter", { label: "retries", value: "" }, "beats.0.do.0.value"],
+    ["checklist", { items: [{ label: "" }] }, "beats.0.do.0.items.0.label"],
+    ["gauge", { label: "CPU", min: 0, max: 1e13, value: 5, unit: "" }, "beats.0.do.0.max"],
+    ["progress", { label: "rows", value: 1, total: 2e12 }, "beats.0.do.0.total"],
+  ];
+  for (const [type, fields, path] of cases) assert.deepEqual(issues(add(type, fields)).map((i) => i.path), [path], type);
+  // a released owner and a gauge with no unit stay valid
+  assert.deepEqual(issues(add("lock", { label: "row", locked: false, owner: "" })), []);
+  assert.deepEqual(issues(add("gauge", { label: "CPU", min: -1e12, max: 1e12, value: 0, unit: "" })), []);
+});

@@ -1,6 +1,6 @@
 import React from "react";
 import type { annotations as defs } from "../../components/annotations.ts";
-import type { Pt, TypesOf } from "../../components/registry.ts";
+import { GRID, type Pt, type TypesOf } from "../../components/registry.ts";
 import type { Palette } from "../../themes.ts";
 import { mono, partial, refRect, sans, stroke, svgPath, type Renderers } from "../kit.tsx";
 
@@ -20,19 +20,35 @@ const fill = (color: string, pal: Palette, a = 0.14) => `color-mix(in srgb, ${co
 const Svg = ({ ctx, children }: { ctx: { t: { width: number; height: number } }; children: React.ReactNode }) => (
   <svg style={{ position: "absolute", inset: 0, overflow: "visible" }} width={ctx.t.width} height={ctx.t.height}>{children}</svg>
 );
+// Text boxes stay on the canvas: an estimated size (0.55 em per character of 0.26-unit sans) picks a side
+// with room and slides the box along its edge, so a note on a component at the edge does not run off screen.
+const M = 0.2; // margin to the canvas edge
+const OPPOSITE: Record<Side, Side> = { left: "right", right: "left", above: "below", below: "above" };
+const boxSize = (text: string, padX: number, padY: number): Pt => [text.length * 0.26 * 0.55 + 2 * padX, 0.26 * 1.2 + 2 * padY];
+const room = (r: R, side: Side, gap: number, [w, h]: Pt) => ({
+  left: r.x - r.w / 2 - gap - w >= M, right: r.x + r.w / 2 + gap + w <= GRID.w - M,
+  above: r.y - r.h / 2 - gap - h >= M, below: r.y + r.h / 2 + gap + h <= GRID.h - M,
+})[side];
+const pick = (r: R, want: Side, gap: number, size: Pt) => (room(r, want, gap, size) || !room(r, OPPOSITE[want], gap, size) ? want : OPPOSITE[want]);
+const keepIn = (v: number, half: number, max: number) => Math.min(Math.max(v, M + half), max - M - half);
+// the anchor of a box facing `side`, slid along that edge to stay on the canvas
+const slide = ([x, y]: Pt, side: Side, [w, h]: Pt): Pt =>
+  side === "above" || side === "below" ? [keepIn(x, w / 2, GRID.w), y] : [x, keepIn(y, h / 2, GRID.h)];
 const at = ([x, y]: Pt, u: number, transform: string, style: React.CSSProperties = {}): React.CSSProperties =>
   ({ position: "absolute", left: x * u, top: y * u, transform, boxSizing: "border-box", whiteSpace: "nowrap", ...style });
 
 export const annotations: Renderers<TypesOf<typeof defs>> = {
   callout: ({ el, ctx, u, color, bad, enter }) => {
-    const side = el.side ?? "right";
     const r = refRect(el.on, ctx);
+    const size = boxSize(el.text, 0.18, 0.08);
+    const side = pick(r, el.side ?? "right", 0.7, size);
     const tip = edgeOf(r, side, 0.08);
-    const near = edgeOf(r, side, 0.7);
+    const near = slide(edgeOf(r, side, 0.7), side, size);
     return (
       <>
         <Svg ctx={ctx}>
-          <path d={svgPath(partial([near, tip], enter), u)} stroke={color} strokeWidth={0.025 * u} strokeLinecap="round" fill="none" />
+          <path d={svgPath(partial([near, tip], enter), u)} stroke={color} strokeWidth={0.025 * u} strokeLinecap="round" fill="none"
+            strokeDasharray={bad ? `${0.08 * u} ${0.06 * u}` : undefined} />
           <circle cx={tip[0] * u} cy={tip[1] * u} r={0.05 * u} fill={color} opacity={enter} />
         </Svg>
         <div style={at(near, u, FACING[side], { border: stroke(bad, u, color), borderRadius: 0.12 * u, background: fill(color, ctx.pal),
@@ -52,7 +68,7 @@ export const annotations: Renderers<TypesOf<typeof defs>> = {
     const base = out > 0 ? Math.max(a[ay] + half(a), b[ay] + half(b)) + 0.15 : Math.min(a[ay] - half(a), b[ay] - half(b)) - 0.15;
     // a classic curly brace in (along, out) coordinates, growing from its middle as it enters
     const m = (lo + hi) / 2;
-    const s = ((hi - lo) / 2 - 0.05) * (0.3 + 0.7 * enter);
+    const s = Math.max(0.15, (hi - lo) / 2 - 0.05) * (0.3 + 0.7 * enter); // ends that line up across still get a small brace
     const d = 0.13;
     const q = Math.min(d, s / 2);
     const pt = (t: number, n: number) => { const o = base + out * n; return `${(vertical ? o : t) * u} ${(vertical ? t : o) * u}`; };
@@ -92,11 +108,15 @@ export const annotations: Renderers<TypesOf<typeof defs>> = {
   },
   bubble: ({ el, ctx, u, color, bad, enter }) => {
     const r = refRect(el.on, ctx);
-    const side: Side = r.y - r.h / 2 < 1.5 ? "below" : "above"; // no room above: hang it below
-    const out = side === "above" ? -1 : 1;
     const think = el.kind === "think";
+    const size = boxSize(el.text, 0.24, 0.12);
+    const side = pick(r, "above", think ? 0.6 : 0.4, size); // no room above: hang it below
+    const out = side === "above" ? -1 : 1;
     const foot = edgeOf(r, side, 0.06); // where the tail ends, at the speaker
     const anchor = edgeOf(r, side, think ? 0.6 : 0.4);
+    // the box slides to stay on the canvas; the tail stays at the speaker, within the box's width
+    const box = slide(anchor, side, size);
+    if (Math.abs(box[0] - anchor[0]) > size[0] / 2 - 0.3) box[0] = anchor[0] + Math.sign(box[0] - anchor[0]) * Math.max(0, size[0] / 2 - 0.3);
     const bg = fill(color, ctx.pal, 0.1);
     const border = think && !bad ? `${0.03 * u}px dotted ${color}` : stroke(bad, u, color);
     // say: a pointed tail whose fill hides the bubble's border where they join; think: a trail of shrinking dots
@@ -111,7 +131,7 @@ export const annotations: Renderers<TypesOf<typeof defs>> = {
       </>;
     return (
       <>
-        <div style={at(anchor, u, FACING[side], { border, borderRadius: (think ? 0.45 : 0.18) * u, background: bg,
+        <div style={at(box, u, FACING[side], { border, borderRadius: (think ? 0.45 : 0.18) * u, background: bg,
           padding: `${0.12 * u}px ${0.24 * u}px`, fontFamily: sans, fontSize: 0.26 * u, color: ctx.pal.text, fontStyle: think ? "italic" : undefined })}>{el.text}</div>
         <Svg ctx={ctx}>{tailDraw}</Svg>
       </>

@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolateColors } from "remotion";
 import { CAPTION } from "../../components/core.ts";
-import { clusterLayout, DEVICE, MEM, memoryLayout, NODE_R, shardsLayout, STORE_BODY, type infra as defs } from "../../components/infra.ts";
+import { barrierLabel, clusterLayout, DEVICE, MEM, memoryLayout, NODE_R, shardsLayout, STORE_BODY, type infra as defs } from "../../components/infra.ts";
 import type { Pt, TypesOf } from "../../components/registry.ts";
 import { alpha, Caption, dashed, iconFor, mono, paint, partial, sans, stroke, svgPath, Text, type Renderers } from "../kit.tsx";
 
@@ -277,18 +277,15 @@ export const infra: Renderers<TypesOf<typeof defs>> = {
     const paint0 = paint(tr, ctx, { partition: pal.bad, firewall: pal.accent, boundary: pal.muted }[el.kind]);
     const color = mix(paint0.color, el.kind === "partition" ? pal.muted : pal.bad, broken);
     const bad = paint0.bad || (el.kind !== "partition" && broken > 0.5);
-    const [a, b] = [el.from, el.to];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const [dx, dy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-    let [nx, ny] = [dy, -dx];
-    if (nx < -0.01 || (Math.abs(nx) < 0.01 && ny < 0)) [nx, ny] = [-nx, -ny]; // label to the right, or below
+    const a = el.from;
+    const { len, dx, dy, nx, ny, mid, at: [lx, ly], anchor } = barrierLabel(el);
     const at = (f: number, off = 0): Pt => [a[0] + dx * len * f + nx * off, a[1] + dy * len * f + ny * off];
     const steps = Math.max(2, Math.round(len / 0.35));
     const points: Pt[] = el.kind === "partition"
       ? Array.from({ length: steps + 1 }, (_, i) => at(i / steps, i === 0 || i === steps ? 0 : i % 2 ? 0.1 : -0.1))
       : [at(0), at(1)];
-    // each half grows in from its end; breaking opens a gap around the middle
-    const reach = (0.5 - 0.06 - 0.12 * broken) * enter;
+    // each half grows in from its end up to the icon; breaking opens a gap of the same size whatever the length
+    const reach = Math.max(0, 0.5 - (0.36 + 0.45 * broken) / len) * enter;
     const halves = [partial(points, reach), partial([...points].reverse(), reach)];
     const style = {
       partition: { width: 0.04, dash: dashed(true, u) },
@@ -298,9 +295,6 @@ export const infra: Renderers<TypesOf<typeof defs>> = {
     const ticks = el.kind === "firewall"
       ? Array.from({ length: Math.floor(len / 0.4) }, (_, i) => (i + 0.5) * 0.4 / len).filter((f) => f < reach || f > 1 - reach) : [];
     const [On, Off] = { partition: ["unplug", "plug"], firewall: ["brick-wall", "brick-wall-fire"], boundary: ["shield", "shield-off"] }[el.kind].map((n) => iconFor(n));
-    const mid = at(0.5);
-    const [lx, ly] = at(0.5, 0.55);
-    const anchor = Math.abs(nx) < 0.5 ? "middle" : "start";
     const icon = (I: typeof On, o: number) => (
       <I x={(mid[0] - 0.21) * u} y={(mid[1] - 0.21) * u} width={0.42 * u} height={0.42 * u} color={color} strokeWidth={1.8} opacity={o * enter} />
     );

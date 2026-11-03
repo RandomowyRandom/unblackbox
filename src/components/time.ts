@@ -11,20 +11,40 @@ const Unit = z.string().max(12).optional().describe("time unit shown on the axis
 const Cursor = z.number().optional().describe("a 'now' marker at this time; set it to make it glide");
 const Width = z.number().min(5).max(15).optional().describe("width in grid units, default 9");
 
-const badSpan = ([a, b]: Span) => (a < b ? [] : ["span must go from earlier to later, e.g. [0, 60]"]);
+const badSpan = ([a, b]: Span) => (!(a < b) ? ["span must go from earlier to later, e.g. [0, 60]"]
+  : Number.isFinite(b - a) ? [] : ["span is too wide to draw; pick a unit that keeps the numbers small, e.g. [0, 60] min"]);
 const outside = (what: string, [a, b]: Span, from: number, to = from) => (from < a || to > b ? [`${what} is outside the span ${a} to ${b}`] : []);
 const cursorErrors = (el: { span: Span; cursor?: number }) => (el.cursor === undefined ? [] : outside(`cursor at ${el.cursor}`, el.span, el.cursor));
 const xOn = (v: number, [a, b]: Span, x0: number, x1: number) => x0 + ((v - a) / (b - a || 1)) * (x1 - x0);
 const known = (ids: string[]) => `; there are: ${ids.join(", ")}`;
+// A time as shown on screen: "20 s", "86,400 ms", "1.5M ms". MONO: width of one 0.22-unit mono character.
+const NUM = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
+const BIG = new Intl.NumberFormat("en", { maximumFractionDigits: 1, notation: "compact" });
+export const fmt = (v: number, unit?: string) => `${(Math.abs(v) >= 1e6 ? BIG : NUM).format(v)}${unit ? ` ${unit}` : ""}`;
+export const MONO = 0.135;
+const SANS24 = 0.12; // average width of one 0.24-unit sans character (estimate)
+const SANS26 = 0.125;
+// lint: labels wider than the room they get end in an ellipsis on screen
+const cutShort = (what: string, labels: (string | undefined)[], room: number | ((i: number) => number), charW = SANS26) => {
+  const cut = labels.filter((l, i): l is string => !!l && l.length * charW > (typeof room === "number" ? room : room(i)));
+  return cut.length ? [`${cut.map((l) => `'${l}'`).join(", ")} ${cut.length > 1 ? "are" : "is"} too long for the ${what} and ends in '...'; use one or two short words`] : [];
+};
+// Center of a "now" tag at x, kept inside a footprint of half-width hw.
+export const tagX = (x: number, text: string, hw: number) => {
+  const half = (text.length * MONO) / 2 + 0.05;
+  return Math.min(hw - half, Math.max(half - hw, x));
+};
 
 // timeline: a tag row for "now", one band row per range, the axis, two alternating label rows
-export const TL = { tag: 0.4, range: 0.4, axis: 0.5, labels: 0.8, margin: 1 };
-export function timelineLayout(el: { w?: number; span: Span; ranges?: unknown[] }) {
+// the axis ends leave room beside them for the span labels ("0 s", "86,400 ms"), at least TL.margin
+export const TL = { tag: 0.4, range: 0.4, axis: 0.5, labels: 0.8, margin: 1, spanGap: 0.3 };
+export function timelineLayout(el: { w?: number; span: Span; unit?: string; ranges?: unknown[] }) {
   const W = el.w ?? 9;
   const n = el.ranges?.length ?? 0;
   const H = TL.tag + n * TL.range + TL.axis + TL.labels;
   const top = -H / 2;
-  const [x0, x1] = [-W / 2 + TL.margin, W / 2 - TL.margin];
+  const margin = (v: number) => Math.min(W / 4, Math.max(TL.margin, TL.spanGap + 0.1 + fmt(v, el.unit).length * MONO));
+  const [x0, x1] = [-W / 2 + margin(el.span[0]), W / 2 - margin(el.span[1])];
   const axisY = top + TL.tag + n * TL.range + TL.axis / 2;
   return {
     W, H, x0, x1, axisY, tagY: top + TL.tag / 2,
@@ -36,6 +56,16 @@ export function timelineLayout(el: { w?: number; span: Span; ranges?: unknown[] 
 // events alternate below the axis by time order, so neighbours never share a row
 export const eventRows = (events: { id: string; at: number }[]) =>
   new Map([...events].sort((a, b) => a.at - b.at).map((e, i) => [e.id, i % 2]));
+// label width per event: up to 2 units, less when the next label in its row is closer, so crowded labels shorten instead of overlapping
+export const EVENT_LABEL = 2;
+export function eventLabelW(el: Parameters<typeof timelineLayout>[0] & { events: { id: string; at: number }[] }) {
+  const L = timelineLayout(el);
+  const rows = eventRows(el.events);
+  return new Map(el.events.map((e) => {
+    const near = el.events.filter((o) => o.id !== e.id && rows.get(o.id) === rows.get(e.id)).map((o) => Math.abs(L.x(o.at) - L.x(e.at)));
+    return [e.id, Math.max(0.5, Math.min(EVENT_LABEL, ...near.map((d) => d - 0.1)))];
+  }));
+}
 
 // sequence: header cards, then one row per message
 export const SEQ = { col: 2.8, head: 0.65, gap: 0.2, row: 0.6 };
@@ -71,8 +101,9 @@ export function lanesLayout(el: { w?: number; span: Span; lanes: { id: string }[
 export const RING = 1.8;
 
 // cycle: step nodes clockwise from the top, labels outside the circle, arcs between neighbours
-export const CY = { r: 1.45, node: 0.34 };
-const textW = (s: string) => Math.min(s.length * 0.15 + 0.1, 2.4);
+// labelMax: widest step label; middle: room for the loop name inside the ring
+export const CY = { r: 1.45, node: 0.34, labelMax: 2.4, middle: 1.92 };
+const textW = (s: string) => Math.min(s.length * 0.15 + 0.1, CY.labelMax);
 export function cycleLayout(el: { steps: { label: string }[] }) {
   const n = el.steps.length;
   const ang = (i: number) => (2 * Math.PI * i) / n;
@@ -99,7 +130,8 @@ export function cycleLayout(el: { steps: { label: string }[] }) {
 }
 
 // pipeline: interlocking chevrons, a status caption row under them
-export const PL = { w: 2.2, h: 0.9, cap: 0.4, notch: 0.3, gap: 0.08 };
+// text: width of the label row inside a chevron (icon + name), clear of the notch and the tip
+export const PL = { w: 2.5, h: 0.9, cap: 0.4, notch: 0.3, gap: 0.08, text: 1.95 };
 const PITCH = PL.w - PL.notch + PL.gap;
 export function pipelineLayout(el: { stages: unknown[] }) {
   const n = el.stages.length;
@@ -154,7 +186,14 @@ export const time = [
       ...(el.ranges ?? []).flatMap((r) => r.from < r.to ? outside(`range '${r.label}' (${r.from} to ${r.to})`, el.span, r.from, r.to) : [`range '${r.label}' must end after it starts`]),
       ...cursorErrors(el),
     ],
-    lint: (el) => (el.events.length > 6 ? [`${el.events.length} events on one timeline; keep the 6 the story needs`] : []),
+    lint: (el) => {
+      const room = eventLabelW(el);
+      const cut = el.events.filter((e) => e.label.length * SANS24 > room.get(e.id)!).map((e) => `'${e.label}'`);
+      return [
+        ...(el.events.length > 6 ? [`${el.events.length} events on one timeline; keep the 6 the story needs`] : []),
+        ...(cut.length ? [`event labels ${cut.join(", ")} end in '...' on screen; shorten them, space the events out or widen w`] : []),
+      ];
+    },
     example: {
       add: {
         span: [0, 75], unit: "s", cursor: 10,
@@ -180,7 +219,7 @@ export const time = [
     type: "sequence", family: "time", summary: "a sequence diagram: who sends what to whom, in order (handshake, request/reply)",
     fields: {
       participants: z.array(Participant).min(2).max(5).describe("columns with lifelines, left to right; addressable as id.participant"),
-      messages: z.array(Message).max(8).describe("top to bottom in time order; a trace rides one as id.message"),
+      messages: z.array(Message).max(8).describe("top to bottom in time order; a trace rides a shown one as id.message"),
       shown: z.number().int().min(0).optional().describe("how many messages are drawn, default all; set it to reveal the next ones"),
     },
     state: ["shown"],
@@ -189,7 +228,8 @@ export const time = [
       const S = sequenceLayout(el);
       return Object.fromEntries(el.participants.map((p) => [p.id, { x: S.px(p.id), y: S.headY, w: SEQ.col - 0.25, h: SEQ.head }]));
     },
-    edges: (el) => Object.fromEntries(el.messages.map((m, k) => [m.id, sequenceLayout(el).line(m, k)])),
+    // only drawn messages can carry a packet: a trace on a hidden one would ride an empty row
+    edges: (el) => Object.fromEntries(el.messages.slice(0, el.shown ?? el.messages.length).map((m, k) => [m.id, sequenceLayout(el).line(m, k)])),
     check: (el) => {
       const ids = el.participants.map((p) => p.id);
       return [
@@ -243,7 +283,10 @@ export const time = [
         ...cursorErrors(el),
       ];
     },
-    lint: (el) => (el.bars.length > 8 ? [`${el.bars.length} bars; keep the few that show the overlap`] : []),
+    lint: (el) => [
+      ...(el.bars.length > 8 ? [`${el.bars.length} bars; keep the few that show the overlap`] : []),
+      ...cutShort("lane label column", el.lanes.map((l) => l.label), LN.label - 0.25),
+    ],
     example: {
       add: {
         lanes: [{ id: "w1", label: "worker 1" }, { id: "w2", label: "worker 2" }], span: [0, 40], unit: "ms",
@@ -291,6 +334,7 @@ export const time = [
       const ids = el.steps.map((s) => s.id);
       return [...uniqueIds("step", ids), ...(el.active !== undefined && !ids.includes(el.active) ? [`active '${el.active}' is not a step${known(ids)}`] : [])];
     },
+    lint: (el) => [...cutShort("step label", el.steps.map((s) => s.label), CY.labelMax), ...cutShort("loop name in the middle", [el.label], CY.middle, SANS24)],
     example: {
       add: {
         label: "reconcile", active: "observe",
@@ -306,7 +350,7 @@ export const time = [
     type: "pipeline", family: "time", summary: "stages in a row, each with a status: CI, ETL, a middleware chain",
     fields: {
       stages: z.array(Stage).min(2).max(6)
-        .describe("left to right; addressable as id.stage, and id.stage is also the edge to the next stage; a set keeps the same stages and changes their status"),
+        .describe("left to right; addressable as id.stage, and id.stage is also the edge to the next stage; a set changes their status, and stages it adds or drops slide in and out"),
     },
     state: ["stages"],
     size: (el) => [pipelineLayout(el).W, pipelineLayout(el).H],
@@ -319,6 +363,7 @@ export const time = [
       return Object.fromEntries(el.stages.slice(0, -1).map((s, i): [string, Pt[]] => [s.id, [[P.cx(i), P.cy], [P.cx(i + 1), P.cy]]]));
     },
     check: (el) => uniqueIds("stage", el.stages.map((s) => s.id)),
+    lint: (el) => cutShort("stage chevron", el.stages.map((s) => s.label), (i) => PL.text - (el.stages[i].icon ? 0.42 : 0)),
     example: {
       add: {
         stages: [

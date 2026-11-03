@@ -19,9 +19,11 @@ const Roll = ({ from, to, p, up = true, style }: { from: React.ReactNode; to: Re
     </span>
   );
 };
-// 12000 -> "12k", 1250000 -> "1.3M"; small numbers keep one decimal unless whole.
+// 12000 -> "12k", 1250000 -> "1.3M"; small numbers keep one decimal unless whole. Values stop at 1e12.
 const compact = (n: number, whole: boolean) => {
   const r = (x: number) => String(Number(x.toFixed(1)));
+  if (Math.abs(n) >= 1e12) return `${r(n / 1e12)}T`;
+  if (Math.abs(n) >= 1e9) return `${r(n / 1e9)}B`;
   if (Math.abs(n) >= 1e6) return `${r(n / 1e6)}M`;
   if (Math.abs(n) >= 1e4) return `${Math.round(n / 1e3)}k`;
   if (Math.abs(n) >= 1e3) return `${r(n / 1e3)}k`;
@@ -61,7 +63,8 @@ export const control: Renderers<TypesOf<typeof defs>> = {
     const top = 0.68; // body top in the graphic
     const lift = (1 - k) * 0.2;
     const sw = 0.1;
-    const holder = (e: typeof el) => (e.locked && e.owner ? e.owner : "");
+    // locked with no owner named is still held, never "free"
+    const holder = (e: typeof el) => (e.locked ? e.owner || "held" : "");
     const [now, was] = [holder(el), holder(change.prev)];
     const pill = (who: string) => who ? (
       <div style={{ display: "inline-flex", height: 0.42 * u, alignItems: "center", padding: `0 ${0.16 * u}px`, boxSizing: "border-box",
@@ -149,7 +152,7 @@ export const control: Renderers<TypesOf<typeof defs>> = {
           <line x1={cx * u} y1={cy * u} x2={(cx + nx) * u} y2={(cy + ny) * u} stroke={ctx.pal.text} strokeWidth={0.05 * u} strokeLinecap="round" />
           <circle cx={cx * u} cy={cy * u} r={0.08 * u} fill={ctx.pal.text} />
           <text x={cx * u} y={(cy + 0.66) * u} textAnchor="middle" fontFamily={mono} fontSize={0.36 * u} fill={zone ? ctx.pal[zone.color] : color}>
-            {whole ? Math.round(v) : v.toFixed(1)}
+            {compact(v, whole)}
             <tspan fontSize={0.22 * u} fill={ctx.pal.muted} dx={0.04 * u}>{el.unit}</tspan>
           </text>
         </svg>

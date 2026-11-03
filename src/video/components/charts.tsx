@@ -1,23 +1,25 @@
 import React, { useId } from "react";
 import { interpolateColors } from "remotion";
 import {
-  BARS, barLabelW, barRect, barScale, barSlot, CHART, chartTop, COMPARE, compareH, DONUT, FUNNEL, funnelLabelW, funnelX, funnelY, VENN, vennLayout,
+  BARS, barLabelW, barRect, barScale, barSlot, CHART, chartTop, COMPARE, compareCol, compareH, DONUT, FUNNEL, funnelLabelW, funnelX, funnelY, VENN, vennLayout,
   type charts as defs,
 } from "../../components/charts.ts";
-import type { TypesOf } from "../../components/registry.ts";
-import { alpha, dashed, iconFor, mono, Panel, sans, stroke, tone, type Renderers, type RProps } from "../kit.tsx";
+import type { Color, TypesOf } from "../../components/registry.ts";
+import { alpha, dashed, iconFor, mono, Panel, sans, tone, type Renderers, type RProps } from "../kit.tsx";
 
 const num = new Intl.NumberFormat("en", { notation: "compact", maximumSignificantDigits: 3 });
 const pct = new Intl.NumberFormat("en", { style: "percent", maximumSignificantDigits: 2 });
 const fmt = (v: number) => num.format(v);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+// A part is bad (dashed) when its own color is bad, or it has none and the whole element turned bad.
+const isBad = (own: Color | undefined, bad: boolean) => (own ? own === "bad" : bad);
 // Fades between two semantic colors as a set changes one.
 const mix = (a: string, b: string, p: number) => (a === b ? b : interpolateColors(p, [0, 1], [a, b]));
 // Row i of a list a set changed: 1 if it stays, fading in if new, fading out if gone.
 const presence = (now: unknown[], prev: unknown[], i: number, p: number) => (i < now.length ? (i < prev.length ? 1 : p) : 1 - p);
-// Text that a set changed cross-fades instead of snapping.
+// Text that a set changed, added or dropped cross-fades instead of snapping.
 const swap = (prev: string | undefined, now: string | undefined, p: number, draw: (s: string, o: number, key: string) => React.ReactNode) =>
-  prev === now || prev === undefined ? (now === undefined ? null : draw(now, 1, "now")) : [draw(prev, 1 - p, "prev"), now !== undefined && draw(now, p, "now")];
+  prev === now ? (now === undefined ? null : draw(now, 1, "now")) : [prev !== undefined && draw(prev, 1 - p, "prev"), now !== undefined && draw(now, p, "now")];
 
 // Every chart draws in an SVG with its origin at the element center, in px of `u` per grid unit,
 // so a footprint that changes with a set never shifts what is drawn.
@@ -31,7 +33,7 @@ const Txt = ({ u, x, y, size = 0.24, fill, anchor = "middle", mono: m, bold, o =
 );
 
 export const charts: Renderers<TypesOf<typeof defs>> = {
-  bars: ({ el, u, w, h, color, ctx, tween, change }) => {
+  bars: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
     const n = tween((e) => e.bars.length);
     const scale = tween(barScale);
@@ -42,14 +44,14 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
       const value = tween((e) => e.bars[i]?.value ?? 0);
       const r = barRect(el, i, n, value / scale);
       const c = mix(tone(pal, prev[i]?.color, color), tone(pal, el.bars[i]?.color, color), change.p);
-      const bad = b.color === "bad";
+      const dash = isBad(b.color, bad);
       const label = (s: string, lo: number, key: string) => el.orient === "h"
         ? <Txt key={key} u={u} x={r.x - r.w / 2 - 0.15} y={r.y} anchor="end" fill={pal.muted} o={lo}>{s}</Txt>
         : <Txt key={key} u={u} x={r.x} y={BARS.base + 0.28} fill={pal.muted} o={lo}>{s}</Txt>;
       return (
         <g key={i} opacity={o}>
           <rect x={(r.x - r.w / 2) * u} y={(r.y - r.h / 2) * u} width={r.w * u} height={r.h * u} rx={0.05 * u}
-            fill={alpha(c, 0.45)} stroke={c} strokeWidth={0.025 * u} strokeDasharray={dashed(bad, u)} />
+            fill={alpha(c, 0.45)} stroke={c} strokeWidth={0.025 * u} strokeDasharray={dashed(dash, u)} />
           {el.orient === "h"
             ? <Txt u={u} x={r.x + r.w / 2 + 0.1} y={r.y} size={0.22} anchor="start" mono fill={pal.text}>{fmt(value)}</Txt>
             : <Txt u={u} x={r.x} y={r.y - r.h / 2 - 0.18} size={0.22} mono fill={pal.text}>{fmt(value)}</Txt>}
@@ -59,22 +61,23 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
     });
     // the unit once, top-left, and the baseline every bar stands on
     const v = el.orient !== "h";
-    const left = v ? -(n * barSlot(el)) / 2 : -w / u / 2;
+    const left = -w / u / 2;
+    const base = (n * barSlot(el)) / 2;
     const top = v ? -1.4 : -(BARS.cap + n * BARS.row) / 2 + 0.15;
     const x0 = left + barLabelW(el) + 0.15;
     const span = (BARS.cap + n * BARS.row) / 2;
     return (
       <Svg w={w} h={h}>
-        <Txt u={u} x={left} y={top} size={0.22} anchor="start" fill={pal.muted}>{el.unit}</Txt>
+        <Txt u={u} x={v ? left + 0.1 : left} y={top} size={0.22} anchor="start" fill={pal.muted}>{el.unit}</Txt>
         {v
-          ? <line x1={left * u} x2={-left * u} y1={BARS.base * u} y2={BARS.base * u} stroke={pal.muted} strokeWidth={0.02 * u} />
+          ? <line x1={-base * u} x2={base * u} y1={BARS.base * u} y2={BARS.base * u} stroke={pal.muted} strokeWidth={0.02 * u} />
           : <line x1={x0 * u} x2={x0 * u} y1={(-span + BARS.cap) * u} y2={span * u} stroke={pal.muted} strokeWidth={0.02 * u} />}
         {rows}
       </Svg>
     );
   },
 
-  chart: ({ el, u, w, h, color, ctx, tween, change }) => {
+  chart: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
     const { x0, x1, y0, y1 } = CHART;
     const top = tween(chartTop);
@@ -93,11 +96,13 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
         return { x: x0 + Math.min(k, len - 1) * step, y: y(v), v };
       });
       const c = mix(tone(pal, prev[s]?.color, color), tone(pal, el.series[s]?.color, color), change.p);
-      return { label: sr.label, c, bad: sr.color === "bad", pts, o: presence(el.series, prev, s, change.p), end: pts.at(-1)! };
+      return { label: sr.label, c, bad: isBad(sr.color, bad), pts, o: presence(el.series, prev, s, change.p), end: pts.at(-1)! };
     });
     // direct labels at the line ends and the threshold's (i = -1) in the right column, nudged apart so they never overlap
     const ends = [...lines.map((l, i) => ({ i, y: l.end.y })), ...(thr ? [{ i: -1, y: y(thr.value) }] : [])].sort((a, b) => a.y - b.y);
     ends.forEach((e, k) => { if (k) e.y = Math.max(e.y, ends[k - 1].y + 0.3); });
+    // then up again from the x axis, so a low cluster stays inside the plot instead of spilling below it
+    ends.reduceRight((below, e) => { e.y = Math.min(e.y, below - 0.3); return e.y; }, y1 + 0.3);
     const ticks = [0, top / 2, top];
     return (
       <Svg w={w} h={h}>
@@ -130,7 +135,7 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
     );
   },
 
-  donut: ({ el, u, w, h, color, ctx, tween, change }) => {
+  donut: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
     const prev = change.prev.slices;
     const count = Math.max(el.slices.length, prev.length);
@@ -161,7 +166,7 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
       return (
         <g key={i} opacity={o}>
           {e > s && <path d={`M${at(s, r)} A${r * u} ${r * u} 0 ${large} 1 ${at(e, r)} L${at(e, r - ring)} A${(r - ring) * u} ${(r - ring) * u} 0 ${large} 0 ${at(s, r - ring)} Z`}
-            fill={fill} stroke={c} strokeWidth={0.02 * u} strokeDasharray={dashed(sl.color === "bad", u)} />}
+            fill={fill} stroke={c} strokeWidth={0.02 * u} strokeDasharray={dashed(isBad(sl.color, bad), u)} />}
           {swap(prev[i]?.label, el.slices[i]?.label, change.p, text)}
         </g>
       );
@@ -175,14 +180,18 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
     );
   },
 
-  compare: ({ el, u, color, ctx, tween, change }) => {
+  compare: ({ el, u, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
     const height = compareH(tween((e) => Math.max(...e.columns.map((c) => c.items.length))));
+    const width = tween(compareCol);
     const verdict = (v: "good" | "bad" | undefined) => (v ? pal[v] : color);
+    const prevCols = change.prev.columns;
     return (
       <div style={{ display: "flex", gap: COMPARE.gap * u, alignItems: "center" }}>
-        {el.columns.map((col, i) => {
-          const was = change.prev.columns[i];
+        {Array.from({ length: Math.max(el.columns.length, prevCols.length) }, (_, i) => {
+          // a column a set adds or drops fades instead of popping
+          const col = el.columns[i] ?? prevCols[i];
+          const was = prevCols[i] ?? col;
           const c = mix(verdict(was?.verdict), verdict(col.verdict), change.p);
           const Icon = col.icon ? iconFor(col.icon) : null;
           const mark = (v: "good" | "bad" | undefined, o: number, key: string) => {
@@ -197,7 +206,8 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
             <div key={k} style={{ position: "relative", height: COMPARE.item * u }}>{swap(was?.items[k], col.items[k], change.p, row)}</div>
           ));
           return (
-            <Panel key={i} u={u} color={c} bad={col.verdict === "bad"} style={{ width: COMPARE.col * u, height: height * u, overflow: "hidden" }}>
+            <Panel key={i} u={u} color={c} bad={isBad(col.verdict, bad)}
+              style={{ width: width * u, height: height * u, overflow: "hidden", opacity: presence(el.columns, prevCols, i, change.p) }}>
               <div style={{ position: "relative", height: COMPARE.head * u, display: "flex", alignItems: "center", gap: 0.15 * u, padding: `0 ${0.25 * u}px`,
                 fontFamily: sans, fontSize: 0.28 * u, fontWeight: 600, color: pal.text }}>
                 {Icon && <Icon size={0.34 * u} color={c} strokeWidth={1.8} />}
@@ -216,7 +226,7 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
 
   venn: (p) => <Venn {...p} />,
 
-  funnel: ({ el, u, w, h, color, ctx, tween, change }) => {
+  funnel: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
     const n = tween((e) => e.stages.length);
     const first = tween((e) => e.stages[0].value) || 1;
@@ -238,7 +248,7 @@ export const charts: Renderers<TypesOf<typeof defs>> = {
         {stages.map((s, i) => (
           <g key={i} opacity={s.o}>
             <rect x={(cx - s.w / 2) * u} y={(s.y - half) * u} width={s.w * u} height={FUNNEL.thick * u} rx={0.05 * u}
-              fill={alpha(color, 0.45)} stroke={color} strokeWidth={0.025 * u} />
+              fill={alpha(color, 0.45)} stroke={color} strokeWidth={0.025 * u} strokeDasharray={dashed(bad, u)} />
             {swap(prev[i]?.label, el.stages[i]?.label, change.p, (str, o, key) => (
               <Txt key={key} u={u} x={lx} y={s.y} anchor="end" fill={pal.text} o={o}>{str}</Txt>
             ))}
@@ -284,8 +294,10 @@ function Venn({ el, u, w, h, color, bad, ctx, tween, change }: RProps<"venn">) {
       ))}
       {labels.map(([x, y], i) => <Txt key={i} u={u} x={x} y={y} size={0.26} bold fill={pal.text}>{el.sets[i].label}</Txt>)}
       {Array.from({ length: Math.max(el.items.length, prev.length) }, (_, i) => {
-        const x = tween((e) => (e.items[i] ? vennLayout(e).items[i][0] : 0));
-        const y = tween((e) => (e.items[i] ? vennLayout(e).items[i][1] : 0));
+        // an item that comes or goes fades where it is (or will be) instead of flying to the center
+        const pos = (e: typeof el) => vennLayout(e.items[i] ? e : el.items[i] ? el : change.prev).items[i];
+        const x = tween((e) => pos(e)[0]);
+        const y = tween((e) => pos(e)[1]);
         return (
           <Txt key={i} u={u} x={x} y={y} size={0.22} fill={pal.text} o={presence(el.items, prev, i, change.p)}>{(el.items[i] ?? prev[i]).label}</Txt>
         );

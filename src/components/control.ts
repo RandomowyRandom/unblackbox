@@ -16,8 +16,9 @@ export const CTL = {
   row: 0.5, // checklist row pitch
 } as const;
 const capW = (s = "") => s.length * 0.143 + 0.3; // a 0.26 sans caption
-const short = (n: number) => z.string().max(n);
-const Num = z.number().finite();
+const short = (n: number) => z.string().min(1).max(n);
+// bounded so every readout fits its footprint (1T at most once compacted)
+const Num = z.number().min(-1e12).max(1e12);
 const fmt = (n: number) => String(Number(n.toFixed(2)));
 const toggleText = (el: { onLabel?: string; offLabel?: string }) => Math.max((el.onLabel ?? "on").length, (el.offLabel ?? "off").length) * CTL.mono;
 export const toggleW = (el: { onLabel?: string; offLabel?: string }) => CTL.track[0] + 0.2 + toggleText(el);
@@ -51,7 +52,7 @@ export const control = [
     fields: {
       label: Label.describe("what it guards, e.g. 'order 1042 row', 'leader'"),
       locked: z.boolean(),
-      owner: short(12).optional().describe("who holds it, e.g. 'worker-2'; \"\" once released"),
+      owner: z.string().max(12).optional().describe("who holds it, e.g. 'worker-2'; \"\" once released"),
     },
     state: ["locked", "owner"],
     size: (el) => [Math.max(CTL.lock[0] + 0.15 + CTL.owner, capW(el.label)), CTL.lock[1] + CAPTION],
@@ -93,7 +94,7 @@ export const control = [
     fields: {
       label: Label.describe("what it measures, e.g. 'CPU', 'queue depth'"),
       min: Num, max: Num, value: Num,
-      unit: short(6).describe("shown after the value, e.g. '%', 'ms', '' for none"),
+      unit: z.string().max(6).describe("shown after the value, e.g. '%', 'ms', '' for none"),
       zones: z.array(z.strictObject({ to: Num.describe("upper end of this zone"), color: Color })).max(4).optional()
         .describe("bands from min upwards, each up to `to`; the last ends at max (e.g. good to 70, accent to 90, bad to 100)"),
     },

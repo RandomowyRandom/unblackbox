@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { jsonLines, lineText } from "../../src/components/messages.ts";
 import { gallery } from "../../src/gallery.ts";
-import { edgesOf, parseSpec, partsOf, type Add } from "../../src/spec.ts";
+import { edgesOf, parseSpec, partsOf, sizeOf, type Add } from "../../src/spec.ts";
 import { buildTimeline } from "../../src/timeline.ts";
 
 const one = (...ops: unknown[]) => ({ title: "t", beats: [{ do: ops }] });
@@ -93,4 +93,40 @@ test("transform: input, fn and output are parts, edges run through it, a packet 
     [{ path: "beats.0.do.0", message: "output equals input; a transform changes it" }]);
   assert.deepEqual(issues(add("transform", tf), set({ fn: { label: "MD5", icon: "hash" } })),
     [{ path: "beats.0.do.1.state", message: 'Unrecognized key: "fn"; settable: input, output' }]);
+});
+
+test("titles and paths are not empty; diff and terminal lines are single lines", () => {
+  assert.deepEqual(issues(add("message", { ...msg, title: "" })).map((i) => i.path), ["beats.0.do.0.title"]);
+  assert.deepEqual(issues(add("request", { ...req, path: "" })).map((i) => i.path), ["beats.0.do.0.path"]);
+  assert.deepEqual(issues(add("diff", { ...diff, lines: [{ op: "+", text: "a\nb" }] })).map((i) => i.path), ["beats.0.do.0.lines.0.text"]);
+  assert.deepEqual(issues(add("terminal", term), set({ lines: ["$ ls\tx"] })).map((i) => i.path), ["beats.0.do.1.state.lines.0"]);
+});
+
+test("cards are as wide as their title and text, never squeezed so text is cut off", () => {
+  const width = (type: string, fields: object) => sizeOf(parsed(type, fields))[0];
+  assert.ok(width("diff", { ...diff, title: "a".repeat(60) }) >= 60 * 0.15);
+  assert.ok(width("terminal", { ...term, title: "a".repeat(60) }) >= 60 * 0.15);
+  assert.ok(width("message", { ...msg, fields: [{ key: "k".repeat(24), value: "v".repeat(40) }] }) >= (24 + 40) * 0.15);
+  assert.ok(partsOf(parsed("transform", { ...tf, input: "i".repeat(32) })).input.w >= 32 * 0.15);
+});
+
+test("token: a signed token has no segment called seal; nothing is wider than the canvas", () => {
+  assert.deepEqual(issues(add("token", { segments: [{ label: "seal", value: "x" }], signed: true })),
+    [{ path: "beats.0.do.0", message: "segment label 'seal' is taken by the seal part of a signed token; rename the segment" }]);
+  const wide = /wider than the 16-unit canvas/;
+  assert.match(issues(add("token", { segments: ["a", "b", "c", "d"].map((label) => ({ label, value: "v".repeat(24) })), signed: true }))[0].message, wide);
+  assert.match(issues(add("transform", { input: "i".repeat(32), output: "o".repeat(32), fn: { label: "f".repeat(60), icon: "hash" } }))[0].message, wide);
+  assert.match(issues(add("json", json), set({ value: { list: Array(6).fill("s".repeat(40)) } }))[0].message, wide);
+});
+
+test("json: highlight paths may use ':' like the keys they name", () => {
+  assert.deepEqual(issues(add("json", { value: { "user:42": { name: "Ana" } }, highlight: ["user:42.name"] })), []);
+});
+
+test("json: a nested limit names its own path and says what is wrong, not 'Invalid input'", () => {
+  assert.deepEqual(issues(add("json", { value: { a: [1, 2, 3, 4, 5, 6, 7] } })),
+    [{ path: "beats.0.do.0.value.a", message: "array of 7 items; show at most 6" }]);
+  assert.deepEqual(issues(add("json", { value: { a: { b: ["s".repeat(41)] } } })).map((i) => i.path), ["beats.0.do.0.value.a.b.0"]);
+  assert.deepEqual(issues(add("json", json), set({ value: { a: { "x y": 1 } } })),
+    [{ path: "beats.0.do.1.state.value.a.x y", message: "key 'x y': use up to 24 letters, digits, _, - or : so it works as a part ref" }]);
 });

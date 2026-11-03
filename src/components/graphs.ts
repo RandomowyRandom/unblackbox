@@ -298,6 +298,9 @@ const linkRefs = (what: string, links: Link[]) => links.flatMap((l): [string, st
 const room = (w: number, icon?: string) => Math.floor((w - 0.3 - (icon ? 0.42 : 0)) / 0.13);
 const fits = (what: string, items: { label?: string; icon?: string }[], w: number) =>
   items.filter((n) => n.label && n.label.length > room(w, n.icon)).map((n) => `${what} label '${n.label}' is too long for its box; keep it to ${room(w, n.icon)} characters`);
+// Two links between the same nodes in the same direction are drawn on top of each other.
+const parallel = (what: string, links: Link[]) => links.filter((l, i) => links.findIndex((m) => m.from === l.from && m.to === l.to) !== i)
+  .map((l) => `${what} '${l.id}' runs from '${l.from}' to '${l.to}' like an earlier one and is drawn on top of it; give both one label`);
 const tooWide = (size: Pt) => (size[0] > 14 || size[1] > 8 ? [`it is ${size[0]} x ${size[1]} units, too big for the canvas with room to spare; show fewer items`] : []);
 
 const Highlight = (n: number) => z.array(PartId).max(n).optional().describe("ids of the items that glow, e.g. the one that changed");
@@ -368,7 +371,7 @@ export const graphs = [
       return [...uniqueIds("node", ids), ...uniqueIds("edge", el.edges.map((e) => e.id)),
         ...known("nodes", ids, linkRefs("edge", el.edges)), ...known("nodes", ids, (el.highlight ?? []).map((h): [string, string] => ["highlight", h]))];
     },
-    lint: (el) => [...fits("node", el.nodes, GRAPH_NODE[0]), ...tooWide(graphLayout(el).size)],
+    lint: (el) => [...fits("node", el.nodes, GRAPH_NODE[0]), ...parallel("edge", el.edges), ...tooWide(graphLayout(el).size)],
     example: {
       add: {
         nodes: [{ id: "web", label: "Web app", icon: "globe" }, { id: "api", label: "API", icon: "server" }, { id: "auth", label: "Auth", icon: "key" },
@@ -400,7 +403,7 @@ export const graphs = [
       return [...uniqueIds("state", ids), ...uniqueIds("transition", el.transitions.map((t) => t.id)),
         ...known("states", ids, [...linkRefs("transition", el.transitions), ["current", el.current]])];
     },
-    lint: (el) => fits("state", el.states, 1.7),
+    lint: (el) => [...fits("state", el.states, 1.7), ...parallel("transition", el.transitions), ...tooWide(statesLayout(el).size)],
     example: {
       add: {
         states: [{ id: "placed", label: "Placed" }, { id: "paid", label: "Paid" }, { id: "shipped", label: "Shipped" },
@@ -421,7 +424,7 @@ export const graphs = [
         kind: z.enum(["start", "step", "decision", "end"]).optional().describe("start and end are pills, decision a diamond; default step"),
       })).min(1).max(10).describe("top to bottom in reading order; parts are step ids"),
       links: z.array(LinkOf("link").extend({ label: Label.optional().describe("yes / no out of a decision") }))
-        .max(14).describe("a link back up (a retry loop) goes around the right side; traceable by link id"),
+        .max(14).describe("a link back up (a retry loop) goes around the side its target leans to; traceable by link id"),
       active: PartId.optional().describe("the step running now; set it to move the light"),
     },
     state: ["active"],
@@ -437,6 +440,7 @@ export const graphs = [
       ...fits("step", el.steps.filter((s) => s.kind !== "decision"), 2.3), ...fits("decision", el.steps.filter((s) => s.kind === "decision"), 1.7),
       ...el.steps.filter((s) => s.kind === "decision" && el.links.filter((l) => l.from === s.id).length < 2)
         .map((s) => `decision '${s.id}' has fewer than two ways out; give it a yes and a no link`),
+      ...parallel("link", el.links),
       ...tooWide(flowLayout(el).size),
     ],
     example: {
@@ -480,6 +484,7 @@ export const graphs = [
       entries: z.array(z.strictObject({
         id: PartId,
         path: z.string().max(60).regex(/^[^/\s]+(\/[^/\s]+)*\/?$/, "a relative path like src/orders/tax.ts; a folder ends with /")
+          .refine((p) => !p.split("/").some((s) => s === "." || s === ".."), "no . or .. in a path; write it from the project root, like src/orders/tax.ts")
           .describe("relative path; parent folders are drawn for you, a folder ends with /"),
       })).min(1).max(12).describe("the files that matter; parts are entry ids"),
       highlight: Highlight(12),
@@ -490,10 +495,12 @@ export const graphs = [
     check: (el) => {
       const ids = el.entries.map((e) => e.id);
       const paths = el.entries.map((e) => e.path);
+      const files = paths.filter((p) => !p.endsWith("/"));
       return [...uniqueIds("entry", ids), ...paths.filter((p, i) => paths.indexOf(p) !== i).map((p) => `path '${p}' listed twice`),
+        ...files.filter((f) => paths.some((p) => p.startsWith(`${f}/`))).map((f) => `'${f}' is a file, but another path puts things inside it; end a folder with /`),
         ...known("entries", ids, (el.highlight ?? []).map((h): [string, string] => ["highlight", h]))];
     },
-    lint: (el) => { const n = fileRows(el.entries).rows.length; return n > 12 ? [`${n} rows with their folders; show the files that matter, 12 rows at most`] : []; },
+    lint: (el) => { const { rows, size } = fileRows(el.entries); return [...(rows.length > 12 ? [`${rows.length} rows with their folders; show the files that matter, 12 rows at most`] : []), ...tooWide(size)]; },
     example: {
       add: { entries: [{ id: "checkout", path: "src/orders/checkout.ts" }, { id: "tax", path: "src/orders/tax.ts" },
         { id: "schema", path: "src/db/schema.sql" }, { id: "test", path: "test/checkout.test.ts" }, { id: "pkg", path: "package.json" }] },
@@ -524,10 +531,15 @@ export const graphs = [
         ...known("branches", branches, el.commits.map((c): [string, string] => [`commit '${c.id}'`, c.branch])),
         ...el.commits.flatMap((c, i) => (c.parents ?? []).filter((p) => !ids.slice(0, i).includes(p))
           .map((p) => `parent '${p}' of commit '${c.id}' must be a commit listed before it`)),
+        ...el.commits.filter((c) => c.parents?.length === 2 && c.parents[0] === c.parents[1]).map((c) => `commit '${c.id}' lists parent '${c.parents![0]}' twice; a merge has two different parents`),
+        // a merge's second edge is named <child>-2, so no commit may take that name
+        ...el.commits.filter((c) => c.parents?.length === 2 && ids.includes(`${c.id}-2`)).map((c) => `commit id '${c.id}-2' clashes with the edge from the second parent of merge '${c.id}'; rename it`),
         ...(el.head === undefined || ids.includes(el.head) || branches.includes(el.head) ? [] : [`head points at '${el.head}', which is neither a commit nor a branch`]),
+        ...(el.head !== undefined && !ids.includes(el.head) && branches.includes(el.head) && !headCommit(el) ? [`head points at branch '${el.head}', which has no commits yet`] : []),
       ];
     },
-    lint: (el) => el.commits.filter((c) => (c.label ?? "").length > 7).map((c) => `commit label '${c.label}' is wider than the gap between commits; keep it to 7 characters`),
+    lint: (el) => [...el.commits.filter((c) => (c.label ?? "").length > 7).map((c) => `commit label '${c.label}' is wider than the gap between commits; keep it to 7 characters`),
+      ...tooWide(commitLayout(el).size)],
     example: {
       add: {
         branches: [{ id: "main", label: "main" }, { id: "fix", label: "fix/tax" }],

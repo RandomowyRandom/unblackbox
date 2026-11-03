@@ -53,6 +53,20 @@ test("check() errors land on the op with an exact message", () => {
     at("commit 'c3' points at 'dev', which is not one of its branches: main, fix").concat(at("parent 'c3' of commit 'b2' must be a commit listed before it")));
 });
 
+test("regressions: merges, HEAD and paths that cannot be drawn are errors", () => {
+  const at = (message: string, i = 0) => [{ path: `beats.0.do.${i}`, message }];
+  const branches = [{ id: "main", label: "main" }, { id: "dev", label: "dev" }];
+  const base = [{ id: "c1", branch: "main" }, { id: "c2", branch: "main" }];
+  assert.deepEqual(issues(add("commits", { branches, commits: [...base, { id: "c3", branch: "main", parents: ["c2", "c2"] }], head: "main" })),
+    at("commit 'c3' lists parent 'c2' twice; a merge has two different parents"));
+  assert.deepEqual(issues(add("commits", { branches, commits: [...base, { id: "m", branch: "main", parents: ["c1", "c2"] }, { id: "m-2", branch: "main" }], head: "main" })),
+    at("commit id 'm-2' clashes with the edge from the second parent of merge 'm'; rename it"));
+  assert.deepEqual(issues(add("commits", { branches, commits: base, head: "dev" })), at("head points at branch 'dev', which has no commits yet"));
+  assert.deepEqual(issues(add("files", { entries: [{ id: "a", path: "src" }, { id: "b", path: "src/b.ts" }] })),
+    at("'src' is a file, but another path puts things inside it; end a folder with /"));
+  assert.deepEqual(issues(add("files", { entries: [{ id: "a", path: "../secret.ts" }] })).map((i) => i.path), ["beats.0.do.0.entries.0.path"]);
+});
+
 test("a set outside the type's state is rejected with its path", () => {
   const bad = (type: string, state: Record<string, unknown>) => issues(add(type), set(state)).map((i) => i.path);
   assert.deepEqual(issues(add("tree"), set({ dir: "right" })),

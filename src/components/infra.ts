@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { CAPTION, Highlight } from "./core.ts";
-import { Color, defineComponent, Icon, Label, PartId, Pos, uniqueIds, type Pt, type Rect } from "./registry.ts";
+import { Color, defineComponent, GRID, Icon, Label, PartId, Pos, uniqueIds, type Pt, type Rect } from "./registry.ts";
 
 // Text widths are estimates: about 0.55 em per character.
 const fits = (what: string, text: string, max: number, where: string) =>
   text.length > max ? [`${what} is ${text.length} characters; ${where} fits ${max}`] : [];
 const known = (ids: string[]) => ids.join(", ");
+// boundary keys label the bar left to right; a repeat is an empty range or a wrap the bar cannot show
+const dupKeys = (keys: string[]) => [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))]
+  .map((k) => `boundary key '${k}' appears twice; keys run left to right, so each range needs its own from and to`);
 const textW = (s: string | undefined, em = 0.26) => (s ? s.length * em * 0.55 : 0);
 
 // store: the body of each shape, grid units (caption below).
@@ -14,7 +17,7 @@ export const STORE_BODY = { cylinder: [1.6, 1.9], bucket: [1.8, 1.8], disk: [2.6
 // cluster: nodes on a ring, label under each node, caption under the ring. cy = ring center from the element center.
 export const NODE_R = 0.4;
 export function clusterLayout(n: number) {
-  const R = n <= 1 ? 0 : n <= 3 ? 1 : 1.3;
+  const R = n <= 1 ? 0 : n <= 3 ? 1 : n <= 5 ? 1.3 : 1.6; // 6-7 nodes: neighbours' labels need the room
   const ring = (i: number): Pt => [R * Math.sin((2 * Math.PI * i) / n), -R * Math.cos((2 * Math.PI * i) / n)];
   const low = Math.max(...Array.from({ length: n }, (_, i) => ring(i)[1])); // a triangle's bottom sits above the ring's
   const [w, h] = [2 * (R + NODE_R) + 0.8, R + low + 2 * NODE_R + 0.6 + CAPTION];
@@ -24,6 +27,7 @@ export function clusterLayout(n: number) {
 }
 
 // shards: equal segments along a keyspace bar, boundary keys above it.
+export const OWNER_CHARS = (seg: number) => Math.floor((seg - 0.12) / (0.22 * 0.55));
 export function shardsLayout(n: number) {
   const seg = n <= 4 ? 1.5 : 7.2 / n;
   const [w, h] = [n * seg + 0.6, 0.4 + 0.65 + CAPTION];
@@ -32,7 +36,7 @@ export function shardsLayout(n: number) {
 }
 
 // memory: an address-space column, region height by relative size (a floor keeps every label readable).
-export const MEM = { colW: 2, colH: 3.6, ptrW: 2.1, minH: 0.4 } as const;
+export const MEM = { colW: 2, colH: 3.6, ptrW: 2.2, minH: 0.4, ptrGap: 0.3 } as const;
 export function memoryLayout(el: { regions: { id: string; size: number }[]; pointers?: unknown[] }) {
   const ptrW = el.pointers ? MEM.ptrW : 0;
   const total = el.regions.reduce((s, r) => s + r.size, 0);
@@ -46,6 +50,17 @@ export function memoryLayout(el: { regions: { id: string; size: number }[]; poin
     top += h;
   }
   return { w: MEM.colW + ptrW, h: MEM.colH + CAPTION, cx, rects };
+}
+
+// barrier: the label sits beside the middle, on the right (or below a level line), clear of the icon.
+export function barrierLabel(el: { from: Pt; to: Pt }) {
+  const [a, b] = [el.from, el.to];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const [dx, dy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+  let [nx, ny] = [dy, -dx];
+  if (nx < -0.01 || (Math.abs(nx) < 0.01 && ny < 0)) [nx, ny] = [-nx, -ny];
+  const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  return { len, dx, dy, nx, ny, mid, at: [mid[0] + nx * 0.55, mid[1] + ny * 0.55] as Pt, anchor: Math.abs(nx) < 0.5 ? "middle" as const : "start" as const };
 }
 
 // device: frame size per kind; where the lines start (from the top-left), how many characters fit, the button.
@@ -69,7 +84,7 @@ const Range = z.strictObject({
 });
 const Region = z.strictObject({
   id: PartId.max(16),
-  label: Label.max(16),
+  label: Label.max(14).describe("fits inside the column"),
   size: z.number().positive().max(1e6).describe("relative size: heights are proportional"),
   color: Color.optional().describe("e.g. muted for free space, bad for garbage"),
 });
@@ -118,7 +133,9 @@ export const infra = [
     check: (el) => {
       const leaders = el.nodes.filter((n) => n.role === "leader").map((n) => n.id);
       return [...uniqueIds("node", el.nodes.map((n) => n.id)),
-        ...(leaders.length > 1 ? [`cluster has ${leaders.length} leaders (${known(leaders)}); one node leads at a time`] : [])];
+        ...(leaders.length > 1 ? [`cluster has ${leaders.length} leaders (${known(leaders)}); one node leads at a time`] : []),
+        ...el.nodes.filter((n) => n.label === undefined && n.id.length > 10)
+          .map((n) => `node '${n.id}' shows its id as its name, ${n.id.length} characters; give it a label of up to 10`)];
     },
     lint: (el) => (el.nodes.length > 5 ? [`cluster of ${el.nodes.length} nodes; 3 or 5 show a quorum and read faster`] : []),
     example: {
@@ -142,12 +159,15 @@ export const infra = [
     state: ["ranges", "highlight"],
     size: (el) => { const l = shardsLayout(el.ranges.length); return [Math.max(l.w, textW(el.label)), l.h]; },
     parts: (el) => { const l = shardsLayout(el.ranges.length); return Object.fromEntries(el.ranges.map((r, i) => [r.id, { x: l.x(i), y: l.barY, w: l.seg * 0.95, h: 0.65 }])); },
-    check: (el) => [
+    check: (el) => { const fit = OWNER_CHARS(shardsLayout(el.ranges.length).seg); return [
       ...uniqueIds("range", el.ranges.map((r) => r.id)),
       ...el.ranges.slice(1).flatMap((r, i) => r.from === el.ranges[i].to ? []
         : [`range '${r.id}' starts at '${r.from}' but '${el.ranges[i].id}' ends at '${el.ranges[i].to}'; ranges must be contiguous`]),
       ...(el.highlight?.some((i) => i >= el.ranges.length) ? [`highlight index out of range; shards has ${el.ranges.length} ranges`] : []),
-    ],
+      ...dupKeys([el.ranges[0].from, ...el.ranges.map((r) => r.to)]),
+      ...el.ranges.filter((r) => (r.owner ?? "").length > fit)
+        .map((r) => `owner '${r.owner}' of range '${r.id}' is ${r.owner!.length} characters; with ${el.ranges.length} ranges a segment fits ${fit}`),
+    ]; },
     example: {
       add: { label: "users by key", ranges: [
         { id: "r1", from: "a", to: "h", owner: "node-1" },
@@ -168,12 +188,22 @@ export const infra = [
       label: Label.max(24).optional().describe("caption under the column"),
     },
     state: ["regions", "pointers"],
-    size: (el) => { const l = memoryLayout(el); return [Math.max(l.w, textW(el.label)), l.h]; },
+    // the caption is centered under the column, which sits right of center when there are pointers
+    size: (el) => { const l = memoryLayout(el); return [Math.max(l.w, 2 * l.cx + textW(el.label)), l.h]; },
     parts: (el) => memoryLayout(el).rects,
     check: (el) => {
       const ids = el.regions.map((r) => r.id);
+      const ptrs = el.pointers ?? [];
+      const rects = memoryLayout(el).rects;
+      const crowded = el.regions.filter((r) => {
+        const n = ptrs.filter((p) => p.to === r.id).length;
+        return n > 1 && rects[r.id].h / n < MEM.ptrGap;
+      });
       return [...uniqueIds("region", ids),
-        ...(el.pointers ?? []).filter((p) => !ids.includes(p.to)).map((p) => `pointer '${p.label}' points at '${p.to}', which is not a region: ${known(ids)}`)];
+        ...[...new Set(ptrs.filter((p, i) => ptrs.findIndex((q) => q.label === p.label) !== i).map((p) => p.label))]
+          .map((l) => `pointer label '${l}' used twice; each pointer needs its own name`),
+        ...ptrs.filter((p) => !ids.includes(p.to)).map((p) => `pointer '${p.label}' points at '${p.to}', which is not a region: ${known(ids)}`),
+        ...crowded.map((r) => `region '${r.id}' is too short for ${ptrs.filter((p) => p.to === r.id).length} pointer labels; give it a larger size`)];
     },
     example: {
       add: { label: "process memory", regions: [
@@ -200,7 +230,16 @@ export const infra = [
     },
     state: ["broken"],
     size: () => [0, 0],
-    check: (el) => (el.from[0] === el.to[0] && el.from[1] === el.to[1] ? ["barrier needs two different points"] : []),
+    check: (el) => {
+      const len = Math.hypot(el.to[0] - el.from[0], el.to[1] - el.from[1]);
+      return !len ? ["barrier needs two different points"] : len < 2 ? [`barrier is ${Math.round(len * 100) / 100} units long; make it at least 2 so the gap a break opens shows`] : [];
+    },
+    lint: (el) => {
+      const { at, anchor } = barrierLabel(el);
+      const tw = textW(el.label, 0.24);
+      const [x0, x1] = anchor === "start" ? [at[0], at[0] + tw] : [at[0] - tw / 2, at[0] + tw / 2];
+      return x0 < 0 || x1 > GRID.w || at[1] < 0.2 || at[1] > GRID.h - 0.2 ? ["barrier label runs past the canvas edge; move the barrier or shorten the label"] : [];
+    },
     chunks: 0,
     example: { add: { from: [8, 1.5], to: [8, 7.5], kind: "partition", label: "network partition" }, set: { broken: true } },
   }),

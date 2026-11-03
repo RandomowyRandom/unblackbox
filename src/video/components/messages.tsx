@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  CH, diffSize, HEAD, JSON_TOP, jsonLines, jsonSize, KIND_ICON, lineText, lit, messageSize, PAD, REQ_ROW, requestLayout, ROW, statusText,
+  CH, diffSize, HEAD, JSON_TOP, jsonLines, jsonSize, KIND_ICON, lineText, lit, messageSize, msgKeyW, PAD, REQ_ROW, requestLayout, ROW, statusText,
   terminalSize, TOKEN, tokenLayout, transformLayout, type messages as defs,
 } from "../../components/messages.ts";
 import type { TypesOf } from "../../components/registry.ts";
@@ -81,7 +81,7 @@ const mtext = (u: number, color: string, children: React.ReactNode, style?: Reac
 export const messages: Renderers<TypesOf<typeof defs>> = {
   message: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
-    const keyW = Math.max(...el.fields.map((f) => f.key.length), 1) * CH;
+    const keyW = tween(msgKeyW);
     const rows = (m: typeof el): Row[] => m.fields.map((f) => ({
       key: f.key, sig: f.value, lit: m.highlight?.includes(f.key),
       draw: () => (
@@ -133,13 +133,18 @@ export const messages: Renderers<TypesOf<typeof defs>> = {
     );
   },
 
-  token: ({ el, u, w, h, color, ctx, change }) => {
+  token: ({ el, u, w, h, color, ctx, tween, change }) => {
     const { pal } = ctx;
     const l = tokenLayout(el);
     const { prev, p } = change;
-    const left = (x: number, width: number) => (l.w / 2 + x - width / 2) * u;
+    // each segment eases to its new place and width when a value grows or shrinks, instead of jumping
+    const eased = (label: string, k: "xs" | "ws", now: number) =>
+      tween((e) => { const j = e.segments.findIndex((s) => s.label === label); return j < 0 ? now : tokenLayout(e)[k][j]; });
+    const segs = el.segments.map((s, i) => ({ s, x: eased(s.label, "xs", l.xs[i]), sw: eased(s.label, "ws", l.ws[i]) }));
+    const sealX = tween((e) => tokenLayout(e).sealX);
+    const left = (x: number, width: number) => w / 2 + (x - width / 2) * u; // w is the eased footprint in px
     const chip = (value: string, i: number, broken: boolean) => (
-      <Chip u={u} tone={broken ? pal.bad : color} bad={broken} fill={broken ? 0.15 : 0.1 + 0.1 * i} h={TOKEN.chip} style={{ width: l.ws[i] * u }}>
+      <Chip u={u} tone={broken ? pal.bad : color} bad={broken} fill={broken ? 0.15 : 0.1 + 0.1 * i} h={TOKEN.chip} style={{ width: segs[i].sw * u }}>
         {mtext(u, pal.text, value)}
       </Chip>
     );
@@ -150,30 +155,31 @@ export const messages: Renderers<TypesOf<typeof defs>> = {
         <div style={{ height: TOKEN.chip * u, display: "flex", alignItems: "center" }}>
           {broken ? <Broken size={0.5 * u} color={pal.bad} strokeWidth={1.8} /> : <Ok size={0.5 * u} color={pal.good} strokeWidth={1.8} />}
         </div>
-        <Text u={u} size={0.2} color={broken ? pal.bad : pal.muted}>{broken ? "invalid" : "valid"}</Text>
+        <Text u={u} size={0.2} color={broken ? pal.bad : pal.muted} style={{ marginTop: 0.08 * u }}>{broken ? "invalid" : "valid"}</Text>
       </div>
     );
     return (
       <div style={{ position: "relative", width: w, height: h }}>
-        {el.segments.map((s, i) => {
-          const was = prev.segments.find((x) => x.label === s.label);
+        {segs.map(({ s, x, sw }, i) => {
+          const was = prev.segments.find((v) => v.label === s.label);
           const broken = el.tampered === s.label;
           const same = !!was && was.value === s.value && (prev.tampered === s.label) === broken;
           return (
-            <div key={s.label} style={{ position: "absolute", top: 0, left: left(l.xs[i], l.ws[i]), width: l.ws[i] * u, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div key={s.label} style={{ position: "absolute", top: 0, left: left(x, sw), width: sw * u, display: "flex", flexDirection: "column", alignItems: "center",
+              opacity: was ? 1 : p }}>
               <Swap from={chip(was?.value ?? s.value, i, prev.tampered === s.label)} to={chip(s.value, i, broken)} p={p} same={same} />
               <Text u={u} size={0.2} color={pal.muted} style={{ marginTop: 0.08 * u }}>{s.label}</Text>
             </div>
           );
         })}
-        {l.xs.slice(1).map((x, i) => (
-          <div key={i} style={{ position: "absolute", top: 0, height: TOKEN.chip * u, left: left(x - l.ws[i + 1] / 2 - TOKEN.dot / 2, TOKEN.dot), width: TOKEN.dot * u,
+        {segs.slice(1).map(({ x, sw }, i) => (
+          <div key={i} style={{ position: "absolute", top: 0, height: TOKEN.chip * u, left: left(x - sw / 2 - TOKEN.dot / 2, TOKEN.dot), width: TOKEN.dot * u,
             display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ width: 0.09 * u, height: 0.09 * u, borderRadius: "50%", background: pal.muted }} />
           </div>
         ))}
         {el.signed && (
-          <div style={{ position: "absolute", top: 0, left: left(l.sealX, TOKEN.seal) }}>
+          <div style={{ position: "absolute", top: 0, left: left(sealX, TOKEN.seal) }}>
             <Swap from={seal(!!prev.tampered)} to={seal(!!el.tampered)} p={p} same={!!prev.tampered === !!el.tampered} />
           </div>
         )}
@@ -227,7 +233,7 @@ export const messages: Renderers<TypesOf<typeof defs>> = {
     const count = (op: string) => el.lines.filter((l) => l.op === op).length;
     const tag = <Tag u={u} pal={pal}><span style={{ color: pal.good }}>+{count("+")}</span> <span style={{ color: pal.bad }}>−{count("-")}</span></Tag>;
     return (
-      <Card u={u} w={w} h={h} tw={tween((e) => diffSize(e.lines)[0])} th={tween((e) => diffSize(e.lines)[1])} color={color} bad={bad} pal={pal}
+      <Card u={u} w={w} h={h} tw={tween((e) => diffSize(e)[0])} th={tween((e) => diffSize(e)[1])} color={color} bad={bad} pal={pal}
         icon="file-diff" title={el.title} tag={tag}>
         <Rows prev={rows(change.prev)} cur={rows(el)} p={change.p} u={u} color={color} />
       </Card>
@@ -255,16 +261,19 @@ export const messages: Renderers<TypesOf<typeof defs>> = {
       }));
     };
     return (
-      <Card u={u} w={w} h={h} tw={tween((e) => terminalSize(e.lines)[0])} th={tween((e) => terminalSize(e.lines)[1])} color={color} bad={bad} pal={pal}
+      <Card u={u} w={w} h={h} tw={tween((e) => terminalSize(e)[0])} th={tween((e) => terminalSize(e)[1])} color={color} bad={bad} pal={pal}
         icon="terminal" title={el.title} bg={pal.panel}>
         <Rows prev={rows(change.prev)} cur={rows(el)} p={change.p} u={u} color={color} typing />
       </Card>
     );
   },
 
-  transform: ({ el, u, w, h, color, bad, ctx, change }) => {
+  transform: ({ el, u, w, h, color, bad, ctx, tween, change }) => {
     const { pal } = ctx;
-    const l = transformLayout(el);
+    // chips and the function box ease to their new widths and places when a value's length changes
+    const eased = (pick: (l: ReturnType<typeof transformLayout>) => number) => tween((e) => pick(transformLayout(e)));
+    const l = { ...transformLayout(el), w: eased((x) => x.w), a: eased((x) => x.a), b: eased((x) => x.b), f: eased((x) => x.f),
+      x: { input: eased((x) => x.x.input), fn: eased((x) => x.x.fn), output: eased((x) => x.x.output) } };
     const { prev, p } = change;
     const [p1, p2] = [unit(p * 2), unit(p * 2 - 1)]; // the input goes in, then the output comes out
     const inChanged = prev.input !== el.input;

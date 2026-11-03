@@ -6,6 +6,8 @@ import { Color, defineComponent, Icon, Label, PartId, uniqueIds, type Pt, type R
 // All offsets are from the element center, in grid units.
 
 const Value = z.number().min(0).max(1e12);
+// A direct label is the only key to what it marks, so it may not be empty.
+const Name = (max: number) => Label.min(1).max(max);
 const CH = 0.13; // grid units per character of 0.24-unit text, to size label columns
 const longest = (names: string[]) => Math.max(0, ...names.map((n) => n.length));
 // Direct labels are the only key, so two equal ones make the chart unreadable.
@@ -17,7 +19,7 @@ const words = (s: string) => s.trim().split(/\s+/).length;
 export const niceMax = (v: number) => {
   if (!(v > 0)) return 1;
   const k = 10 ** Math.floor(Math.log10(v));
-  return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => Number((m * k).toPrecision(6))).find((m) => m >= v * (1 - 1e-9))!;
+  return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => Number((m * k).toPrecision(6))).find((m) => m >= v * (1 - 1e-9)) ?? v; // ?? v: below 1e-308 the powers of ten underflow to 0
 };
 
 // bars: vertical bars stand on a baseline, one slot each; horizontal rows grow right from a label column.
@@ -53,6 +55,11 @@ const donutSize = (el: { slices: { label: string }[] }): [number, number] =>
 // compare: one panel per column, a header row then one row per item.
 export const COMPARE = { col: 3, gap: 0.3, head: 0.7, item: 0.42, pad: 0.25 } as const;
 export const compareH = (maxItems: number) => COMPARE.head + maxItems * COMPARE.item + COMPARE.pad;
+type CompareEl = { columns: { title: string; icon?: string; items: string[] }[] };
+// one width for every column, wide enough for the longest title (0.28 bold, icon, verdict mark) and the longest item
+export const compareCol = (el: CompareEl) => Math.max(COMPARE.col,
+  ...el.columns.map((c) => 2 * COMPARE.pad + (c.icon ? 0.49 : 0) + c.title.length * 0.16 + 0.55),
+  ...el.columns.flatMap((c) => c.items.map((it) => 2 * COMPARE.pad + it.length * CH + 0.1)));
 
 // venn: circles of radius 1.2; items sit in the region of exactly their sets, stacked 0.32 apart.
 type VennEl = { sets: { id: string; label: string }[]; items: { label: string; in: string[] }[] };
@@ -99,11 +106,11 @@ export const charts = [
     type: "bars", family: "charts", summary: "quantities side by side: latency per region, jobs per worker",
     fields: {
       bars: z.array(z.strictObject({
-        label: Label.max(16).describe("what the bar is, e.g. 'eu-west'"),
+        label: Name(16).describe("what the bar is, e.g. 'eu-west'"),
         value: Value,
         color: Color.optional().describe("bad for the one that is wrong; it is also dashed"),
       })).min(1).max(8).describe("one bar per thing compared, in a meaningful order"),
-      unit: Label.max(16).describe("what the values count, shown once in the corner: 'p99 ms', 'jobs'"),
+      unit: Name(16).describe("what the values count, shown once in the corner: 'p99 ms', 'jobs'"),
       orient: z.enum(["v", "h"]).optional().describe("v: bars stand up (default); h: rows, for long labels"),
       max: z.number().positive().max(1e12).optional().describe("axis end, so two moments share one scale; default: just above the largest bar"),
     },
@@ -116,7 +123,8 @@ export const charts = [
     ],
     lint: (el) => (el.bars.length > 6 ? [`${el.bars.length} bars; keep it to 6 so each one reads`] : []),
     example: {
-      add: { unit: "p99 ms", bars: [{ label: "eu-west", value: 120 }, { label: "us-east", value: 340, color: "bad" }, { label: "ap-south", value: 210 }] },
+      // max keeps one scale across the set, so the bars that did not change stay put
+      add: { unit: "p99 ms", max: 400, bars: [{ label: "eu-west", value: 120 }, { label: "us-east", value: 340, color: "bad" }, { label: "ap-south", value: 210 }] },
       set: { bars: [{ label: "eu-west", value: 120 }, { label: "us-east", value: 90, color: "good" }, { label: "ap-south", value: 210 }] },
     },
   }),
@@ -124,13 +132,13 @@ export const charts = [
     type: "chart", family: "charts", summary: "a value over time: latency, queue depth, a spike past a limit",
     fields: {
       series: z.array(z.strictObject({
-        label: Label.max(12).describe("direct label at the line's end, e.g. 'p99'"),
+        label: Name(12).describe("direct label at the line's end, e.g. 'p99'"),
         points: z.array(Value).min(2).max(40).describe("values at even steps along x"),
         color: Color.optional(),
       })).min(1).max(3),
-      xLabel: Label.max(24).describe("what x counts, e.g. 'minutes'"),
-      yLabel: Label.max(24).describe("what y measures, e.g. 'latency ms'"),
-      threshold: z.strictObject({ value: Value, label: Label.max(12).describe("e.g. 'SLO 500 ms'") }).optional()
+      xLabel: Name(24).describe("what x counts, e.g. 'minutes'"),
+      yLabel: Name(24).describe("what y measures, e.g. 'latency ms'"),
+      threshold: z.strictObject({ value: Value, label: Name(12).describe("e.g. 'SLO 500 ms'") }).optional()
         .describe("a dashed limit line; points above it get a bad dot"),
     },
     state: ["series"],
@@ -151,7 +159,7 @@ export const charts = [
   defineComponent({
     type: "donut", family: "charts", summary: "shares of a whole: cache hit ratio, traffic split",
     fields: {
-      slices: z.array(z.strictObject({ label: Label.max(14), value: Value, color: Color.optional() })).min(1).max(6)
+      slices: z.array(z.strictObject({ label: Name(14), value: Value, color: Color.optional() })).min(1).max(6)
         .describe("the first slice is the headline: its share is shown big in the middle"),
       center: Label.max(12).optional().describe("caption under the headline share, e.g. 'cache hits'"),
     },
@@ -177,14 +185,14 @@ export const charts = [
     type: "compare", family: "charts", summary: "two or three options side by side: before/after, A vs B, a trade-off",
     fields: {
       columns: z.array(z.strictObject({
-        title: Label.max(20),
+        title: Name(20),
         icon: Icon.optional(),
-        items: z.array(Label.max(24)).min(1).max(5).describe("short facts, a few words each"),
+        items: z.array(Name(24)).min(1).max(5).describe("short facts, a few words each"),
         verdict: z.enum(["good", "bad"]).optional().describe("marks the column with a check or a cross and its color"),
       })).min(2).max(3),
     },
     state: ["columns"],
-    size: (el) => [el.columns.length * COMPARE.col + (el.columns.length - 1) * COMPARE.gap, compareH(Math.max(...el.columns.map((c) => c.items.length)))],
+    size: (el) => [el.columns.length * compareCol(el) + (el.columns.length - 1) * COMPARE.gap, compareH(Math.max(...el.columns.map((c) => c.items.length)))],
     check: (el) => twice("columns", el.columns.map((c) => c.title)),
     lint: (el) => el.columns.flatMap((c) => [
       ...(c.items.length > 4 ? [`column '${c.title}' has ${c.items.length} items; keep it to 4`] : []),
@@ -204,9 +212,9 @@ export const charts = [
   defineComponent({
     type: "venn", family: "charts", summary: "overlapping sets: shared permissions, common dependencies",
     fields: {
-      sets: z.array(z.strictObject({ id: PartId.describe("ref it as 'venn.<id>'"), label: Label.max(16) })).min(2).max(3),
+      sets: z.array(z.strictObject({ id: PartId.describe("ref it as 'venn.<id>'"), label: Name(16) })).min(2).max(3),
       items: z.array(z.strictObject({
-        label: Label.max(12).describe("short: it has to fit its region, e.g. 'Ana'"),
+        label: Name(12).describe("short: it has to fit its region, e.g. 'Ana'"),
         in: z.array(PartId).min(1).max(3).describe("ids of the sets it belongs to; it sits where exactly those overlap"),
       })).max(8),
       highlight: z.array(PartId).max(3).optional().describe("glow the region where exactly these sets overlap, e.g. ['admin', 'billing']"),
@@ -244,7 +252,7 @@ export const charts = [
   defineComponent({
     type: "funnel", family: "charts", summary: "stages that filter: requests through auth, rate limit and cache",
     fields: {
-      stages: z.array(z.strictObject({ label: Label.max(16), value: Value })).min(2).max(5).describe("top to bottom; each at most the one before it"),
+      stages: z.array(z.strictObject({ label: Name(16), value: Value })).min(2).max(5).describe("top to bottom; each at most the one before it"),
     },
     state: ["stages"],
     size: (el) => [funnelW(el), el.stages.length * FUNNEL.pitch + 0.1],
