@@ -366,7 +366,7 @@ export function pacing(spec: Spec, totalSec: number): Issue[] {
   // annotations count: a badge or a callout is one more thing to read. A short video still gets two minutes' worth.
   const ideas = spec.beats.flatMap((beat) => beat.do).filter((a) => a.op === "add" && !FREE.has(a.type)).length;
   const perMin = Math.round((ideas / (Math.max(totalSec, 120) / 60)) * 10) / 10;
-  if (perMin > lim.ideas) warn("beats", `${ideas} new things in ${Math.round(totalSec)} s (${perMin} a minute); aim under ${lim.ideas}: keep one board and change what is on it instead of bringing in new things`);
+  if (perMin > lim.ideas) warn("beats", `${ideas} new things in ${Math.round(totalSec)} s (${perMin} a minute); aim under ${lim.ideas}: show fewer things and change what is on screen instead of bringing in new ones`);
   const spoken = spec.beats.reduce((s, beat) => s + words(beat.say ?? ""), 0);
   const wpm = Math.round(spoken / (totalSec / 60));
   if (wpm > lim.wpm) warn("beats", `about ${wpm} spoken words a minute; aim under ${lim.wpm}: fewer, shorter lines and more quiet between them`);
