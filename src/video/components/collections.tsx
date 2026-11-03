@@ -1,6 +1,7 @@
 import React from "react";
 import {
-  bytesH, byteCell, byteX, collections as defs, gridAt, GRID_STEP, kvCols, logCell, logH, logX, RING, ringAngle, ringAt, ringSlot, ROW, sheetRowY, stackY, tableCols,
+  bytesH, byteCell, byteX, collections as defs, fieldX, gridAt, GRID_STEP, kvCols, logCell, logCursors, logH, logX, RING_SLOT, ringAngle, ringAt, ringLifts, ringR, ROW,
+  sheetRowY, stackBody, stackY, tableCols,
 } from "../../components/collections.ts";
 import { CAPTION } from "../../components/core.ts";
 import type { Pt, TypesOf } from "../../components/registry.ts";
@@ -51,12 +52,16 @@ function Swap({ from, to, p, u }: { from?: string; to?: string; p: number; u: nu
 }
 
 // One slot, the same look as core cells: filled when it holds something, glowing when lit.
-type SlotProps = { u: number; style: React.CSSProperties; color: string; bad: boolean; pal: Palette; fill: number; lit: number; o: number; size?: number; children?: React.ReactNode };
-const Slot = ({ u, style, color, bad, pal, fill, lit, o, size = 0.22, children }: SlotProps) => (
-  <div style={{ ...style, border: stroke(bad, u, color), borderRadius: 0.08 * u, background: alpha(color, Math.min(0.65, fill + 0.4 * lit)),
+// `opaque` paints the theme background under the tint, so a line drawn behind (the ring) does not show through an empty slot.
+type SlotProps = { u: number; style: React.CSSProperties; color: string; bad: boolean; pal: Palette; fill: number; lit: number; o: number; size?: number; opaque?: boolean; children?: React.ReactNode };
+const Slot = ({ u, style, color, bad, pal, fill, lit, o, size = 0.22, opaque, children }: SlotProps) => {
+  const tint = alpha(color, Math.min(0.65, fill + 0.4 * lit));
+  return (
+  <div style={{ ...style, border: stroke(bad, u, color), borderRadius: 0.08 * u, background: opaque ? `linear-gradient(${tint}, ${tint}), ${pal.bg}` : tint,
     boxShadow: lit > 0.01 ? `0 0 ${0.25 * u * lit}px ${color}` : undefined, opacity: o, display: "flex", alignItems: "center", justifyContent: "center",
     fontFamily: mono, fontSize: size * u, color: pal.text, overflow: "hidden", whiteSpace: "nowrap" }}>{children}</div>
-);
+  );
+};
 const filled = (v?: string) => (v ? 0.2 : 0);
 
 // Caption row at the bottom of a body of height H units.
@@ -89,7 +94,7 @@ function Sheet({ u, w, h, color, bad, pal, cols, n, header, prev, now, hl, p, la
       <Panel u={u} color={color} bad={bad} style={boxAt(u, w, h, 0, top + H / 2, W + 0.1, H)} />
       {header?.map((name, j) => (
         <div key={j} style={{ ...boxAt(u, w, h, xs[j], top + 0.05 + ROW / 2, cols[j], ROW), display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: sans, fontSize: 0.22 * u, fontWeight: 600, color: pal.muted }}>{name}</div>
+          fontFamily: mono, fontSize: 0.22 * u, color: pal.muted, whiteSpace: "nowrap" }}>{name}</div> /* mono: column widths are measured in mono characters */
       ))}
       {header && <div style={{ ...boxAt(u, w, h, 0, top + 0.05 + ROW, W - 0.1, 0), borderTop: stroke(false, u, alpha(color, 0.4), 0.02) }} />}
       {!header && cols.length === 2 && <div style={{ ...boxAt(u, w, h, xs[0] + cols[0] / 2, top + H / 2, 0, H - 0.2), borderLeft: stroke(false, u, alpha(color, 0.4), 0.02) }} />}
@@ -122,7 +127,7 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
   // slabs in an open-top box: a push drops in from above, a pop lifts off
   stack: ({ el, u, w, h, color, bad, ctx, tween, change: { prev, p } }) => {
     const cap = el.label ? CAPTION : 0;
-    const body = tween((e) => Math.max(e.items.length, 1) * 0.58 + 0.22);
+    const body = tween((e) => stackBody(e.items.length));
     const items = (s: typeof el) => s.items.map((v, i, a) => ({ key: String(a.length - 1 - i), v, i }));
     const slabs = keyed(items(prev), items(el), (i, all) => [0, stackY(i, all.length, cap)], p, [0, -0.6]);
     const lit = (s: typeof el, i?: number) => i !== undefined && !!s.highlight?.includes(i);
@@ -142,32 +147,34 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
     );
   },
   // slots on a faint circle; pointers are markers outside it that always advance clockwise
-  ring: ({ el, u, w, h, color, bad, ctx, change: { prev, p } }) => {
+  ring: ({ el, u, w, h, color, bad, ctx, tween, change: { prev, p } }) => {
     const n = el.slots.length;
-    const s = ringSlot(n);
+    const s = RING_SLOT;
+    const R = tween((e) => ringR(e.slots.length));
     const items = (x: typeof el) => x.slots.map((v, i) => ({ key: String(i), v }));
     const slots = keyed(items(prev), items(el), (i, all) => ringAt(i, all.length), p);
     const was = new Map((prev.pointers ?? []).map((q) => [q.label, q.at]));
+    const [liftWas, liftNow] = [ringLifts(prev.pointers), ringLifts(el.pointers)];
     const ptrs = [
       ...(el.pointers ?? []).map((q) => {
         const from = was.get(q.label);
-        return { label: q.label, a: ringAngle(from === undefined ? q.at : from + ((q.at - from + n) % n) * p, n), o: from === undefined ? p : 1 };
+        return { label: q.label, a: ringAngle(from === undefined ? q.at : from + ((q.at - from + n) % n) * p, n), o: from === undefined ? p : 1,
+          lift: lerp(liftWas[q.label] ?? liftNow[q.label], liftNow[q.label], p) };
       }),
-      ...(prev.pointers ?? []).filter((q) => !el.pointers?.some((x) => x.label === q.label)).map((q) => ({ label: q.label, a: ringAngle(q.at, n), o: 1 - p })),
+      ...(prev.pointers ?? []).filter((q) => !el.pointers?.some((x) => x.label === q.label))
+        .map((q) => ({ label: q.label, a: ringAngle(q.at, n), o: 1 - p, lift: liftWas[q.label] })),
     ];
-    const near = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 0.15;
     const [cx, cy] = [w / 2, h / 2];
-    const tip = RING + s / 2 + 0.08;
     return (
       <Root w={w} h={h}>
         <svg style={{ position: "absolute", inset: 0, overflow: "visible" }} width={w} height={h}>
-          <circle cx={cx} cy={cy} r={RING * u} fill="none" stroke={alpha(color, 0.35)} strokeWidth={0.025 * u} strokeDasharray={dashed(bad, u)} />
-          {ptrs.map((q, k) => {
+          <circle cx={cx} cy={cy} r={R * u} fill="none" stroke={alpha(color, 0.35)} strokeWidth={0.025 * u} strokeDasharray={dashed(bad, u)} />
+          {ptrs.map((q) => {
             const [dx, dy] = [Math.cos(q.a), Math.sin(q.a)];
             const [nx, ny] = [-dy, dx];
+            const tip = R + s / 2 / Math.max(Math.abs(dx), Math.abs(dy)) + 0.08; // just outside the square slot, corners included
             const pt = (r: number, side = 0) => `${cx + (dx * r + nx * side) * u},${cy + (dy * r + ny * side) * u}`;
-            const lift = ptrs.slice(0, k).filter((x) => near(x.a, q.a)).length * 0.28;
-            const r = tip + 0.36 + lift;
+            const r = tip + 0.36 + q.lift;
             return (
               <g key={q.label} opacity={q.o}>
                 <polygon points={`${pt(tip)} ${pt(tip + 0.2, 0.11)} ${pt(tip + 0.2, -0.11)}`} fill={ctx.pal.text} />
@@ -178,12 +185,15 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
           })}
         </svg>
         {slots.map((x) => (
-          <Slot key={x.key} u={u} style={boxAt(u, w, h, x.x, x.y, s, s)} color={color} bad={bad} pal={ctx.pal} o={x.o} lit={0}
+          <Slot key={x.key} u={u} style={boxAt(u, w, h, x.x, x.y, s, s)} color={color} bad={bad} pal={ctx.pal} o={x.o} lit={0} opaque
             fill={lerp(filled(x.was?.v ?? x.now?.v), filled(x.now?.v ?? x.was?.v), p)} size={0.2}>
             <Swap from={x.was?.v} to={x.now?.v} p={p} u={u} />
           </Slot>
         ))}
-        {el.label && <Mark u={u} w={w} h={h} x={0} y={0} color={ctx.pal.muted}><span style={{ fontFamily: sans, fontSize: 0.26 * u }}>{el.label}</span></Mark>}
+        {el.label && (
+          <div style={{ ...boxAt(u, w, h, 0, 0, 2 * (R - s) - 0.1, 2 * (R - s)), display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
+            fontFamily: sans, fontSize: 0.26 * u, lineHeight: 1.15, color: ctx.pal.muted, overflowWrap: "anywhere" }}>{el.label}</div>
+        )}
       </Root>
     );
   },
@@ -210,14 +220,23 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
     const H = tween((e) => logH(e));
     const top = -H / 2;
     const cell = tween((e) => logCell(e.entries));
-    const items = (s: typeof el) => s.entries.map((v, i) => ({ key: String((s.start ?? 0) + i), v }));
-    const entries = keyed(items(prev), items(el), (i, all) => [logX(i, all.map((x) => x.v)), 0], p, [0.6, 0], [-0.6, 0]);
+    // every offset glides from where it sits in the old layout to where it sits in the new one, past either end included:
+    // an append slides in out of the spare slot, a dropped entry slides off the left, and nothing crosses when the width changes
+    const xAt = (s: typeof el, off: number) => logX(off - (s.start ?? 0), s.entries);
+    const at = (s: typeof el, off: number) => s.entries[off - (s.start ?? 0)];
+    const offs = [...new Set([prev, el].flatMap((s) => s.entries.map((_, i) => (s.start ?? 0) + i)))];
+    const entries = offs.map((off) => {
+      const [was, now] = [at(prev, off), at(el, off)];
+      return { key: String(off), was: was === undefined ? undefined : { v: was }, now: now === undefined ? undefined : { v: now },
+        x: lerp(xAt(prev, off), xAt(el, off), p), o: glow(was !== undefined, now !== undefined, p) };
+    });
     const spare = tween((e) => logX(e.entries.length, e.entries));
-    const names = [...new Set([...Object.keys(prev.cursors ?? {}), ...Object.keys(el.cursors ?? {})])];
-    const xOf = (s: typeof el, name: string) => (s.cursors?.[name] === undefined ? undefined : logX(s.cursors[name] - (s.start ?? 0), s.entries));
+    const [cWas, cNow] = [logCursors(prev), logCursors(el)];
+    const names = [...new Set([...cWas, ...cNow].map((c) => c.name))];
     const cursors = names.map((name) => {
-      const [a, b] = [xOf(prev, name), xOf(el, name)];
-      return { name, x: lerp(a ?? b!, b ?? a!, p), o: glow(a !== undefined, b !== undefined, p) };
+      const [a, b] = [cWas.find((c) => c.name === name), cNow.find((c) => c.name === name)];
+      const [from, to] = [a ?? b!, b ?? a!];
+      return { name, x: lerp(from.x, to.x, p), row: lerp(from.row, to.row, p), o: glow(!!a, !!b, p) };
     });
     return (
       <Root w={w} h={h}>
@@ -236,14 +255,11 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
             return <polygon key={c.name} opacity={c.o} fill={ctx.pal.text} points={`${x},${y} ${x - 0.11 * u},${y + 0.18 * u} ${x + 0.11 * u},${y + 0.18 * u}`} />;
           })}
         </svg>
-        {cursors.map((c, k) => {
-          const below = cursors.slice(0, k).filter((x) => Math.abs(x.x - c.x) < 0.3).length;
-          return (
-            <Mark key={c.name} u={u} w={w} h={h} x={c.x} y={top + 1.46 + below * 0.28} color={ctx.pal.text} o={c.o}>
-              <span style={{ fontFamily: sans, fontSize: 0.22 * u }}>{c.name}</span>
-            </Mark>
-          );
-        })}
+        {cursors.map((c) => (
+          <Mark key={c.name} u={u} w={w} h={h} x={c.x} y={top + 1.46 + c.row * 0.28} color={ctx.pal.text} o={c.o}>
+            <span style={{ fontFamily: sans, fontSize: 0.22 * u }}>{c.name}</span>
+          </Mark>
+        ))}
         <Cap u={u} w={w} h={h} H={H} text={el.label} pal={ctx.pal} />
       </Root>
     );
@@ -274,12 +290,16 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
     );
   },
   // byte indexes above, a bracket and name under each field
-  bytes: ({ el, u, w, h, color, bad, ctx, change: { prev, p } }) => {
-    const H = bytesH(el);
+  bytes: ({ el, u, w, h, color, bad, ctx, tween, change: { prev, p } }) => {
+    const H = tween(bytesH);
     const top = -H / 2;
-    const cw = byteCell(el.values);
-    const items = (s: typeof el) => s.values.map((v, i) => ({ key: String(i), v }));
-    const cells = keyed(items(prev), items(el), (i, all) => [byteX(i, all.map((x) => x.v)), top + 0.59], p);
+    const cw = tween((e) => byteCell(e.values));
+    // like the log: each index glides between its old and new spot (past the ends too), so a width change never crosses cells
+    const cells = Array.from({ length: Math.max(prev.values.length, el.values.length) }, (_, i) => {
+      const [was, now] = [prev.values[i], el.values[i]];
+      return { key: String(i), was: was === undefined ? undefined : { v: was }, now: now === undefined ? undefined : { v: now },
+        x: lerp(byteX(i, prev.values), byteX(i, el.values), p), y: top + 0.59, o: glow(was !== undefined, now !== undefined, p) };
+    });
     const lit = (s: typeof el, k?: string) => k !== undefined && !!s.highlight?.includes(Number(k));
     const y = (top + 1.04) * u + h / 2;
     return (
@@ -295,12 +315,12 @@ export const collections: Renderers<TypesOf<typeof defs>> = {
         ))}
         <svg style={{ position: "absolute", inset: 0, overflow: "visible" }} width={w} height={h}>
           {(el.fields ?? []).map((f) => {
-            const [x0, x1] = [w / 2 + (byteX(f.from, el.values) - cw / 2 + 0.04) * u, w / 2 + (byteX(f.to, el.values) + cw / 2 - 0.04) * u];
+            const [x0, x1] = [w / 2 + (tween((e) => byteX(f.from, e.values)) - cw / 2 + 0.04) * u, w / 2 + (tween((e) => byteX(f.to, e.values)) + cw / 2 - 0.04) * u];
             return <path key={f.name} d={`M${x0} ${y - 0.08 * u} L${x0} ${y} L${x1} ${y} L${x1} ${y - 0.08 * u}`} fill="none" stroke={alpha(color, 0.6)} strokeWidth={0.025 * u} />;
           })}
         </svg>
         {(el.fields ?? []).map((f) => (
-          <Mark key={f.name} u={u} w={w} h={h} x={(byteX(f.from, el.values) + byteX(f.to, el.values)) / 2} y={top + 1.26} color={ctx.pal.text}>{f.name}</Mark>
+          <Mark key={f.name} u={u} w={w} h={h} x={tween((e) => fieldX(f, e.values))} y={top + 1.26} color={ctx.pal.text}>{f.name}</Mark>
         ))}
         <Cap u={u} w={w} h={h} H={H} text={el.label} pal={ctx.pal} />
       </Root>

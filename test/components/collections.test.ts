@@ -103,3 +103,53 @@ test("arrows attach to collection parts and traces run along the ring", () => {
   ));
   assert.deepEqual(is, [{ path: "beats.0.do.5", message: "'w' still points at 'orders.1042', which this change removes" }]);
 });
+
+const sized = (type: string, extra: Record<string, unknown>) => sizeOf(parseSpec(one(add(type, extra))).spec!.beats[0].do[0] as Add);
+
+test("regressions: text that would spill out of the footprint widens it", () => {
+  for (const type of ["stack", "table", "kv", "log", "grid", "bytes"]) assert.ok(sized(type, { label: "a".repeat(40) })[0] >= 40 * 0.15, type);
+  assert.ok(sized("grid", { rows: [["1"]], label: "hot shard" })[0] >= 9 * 0.15);
+  // ring: pointers on one slot stack outward, inside the footprint
+  const [, h1] = sized("ring", { pointers: [{ label: "read", at: 2 }] });
+  const [, h3] = sized("ring", { pointers: [{ label: "a", at: 2 }, { label: "b", at: 2 }, { label: "c", at: 2 }] });
+  assert.ok(h3 >= h1 + 2 * 0.56 - 1e-9);
+  // log: long cursor names on neighbouring offsets get their own rows; one on the spare slot fits the width
+  const [lw, lh] = sized("log", { cursors: { "billing-service": 42, "email-service": 43 } });
+  const [, lh0] = sized("log", { cursors: { billing: 42, email: 45 } });
+  assert.ok(lh > lh0 && lw >= 6 * 0.8);
+  const spare = sized("log", { cursors: { "analytics-worker": 45 } })[0];
+  assert.ok(spare / 2 >= 2.5 * 0.8 + (16 * 0.11) / 2, String(spare));
+  // bytes: a long field name on the first byte widens it
+  assert.ok(sized("bytes", { fields: [{ name: "protocol_version", from: 0, to: 0 }] })[0] > 8 * 0.68);
+});
+
+test("regressions: schema and checks reject what cannot be drawn", () => {
+  const msgs = (...ops: unknown[]) => issues(...ops).map((i) => [i.path, i.message]);
+  // ring: slots never overlap (diagonal neighbours on a 12-ring used to), so 5 characters always fit
+  for (let n = 2; n <= 12; n++) {
+    const ps = Object.values(partsOf(parseSpec(one(add("ring", { slots: Array(n).fill("10420"), pointers: [] }))).spec!.beats[0].do[0] as Add));
+    ps.forEach((a, i) => {
+      const b = ps[(i + 1) % n];
+      assert.ok(Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) >= a.w + 0.1 - 1e-9, `ring of ${n}: slots ${i} and ${(i + 1) % n} overlap`);
+    });
+  }
+  const top = partsOf(after("ring"))["0"]; // 8 slots keep the compact radius
+  assert.ok(Math.abs(Math.hypot(top.x, top.y) - 1.35) < 1e-9);
+  assert.deepEqual(issues(add("ring", { pointers: [{ label: "", at: 0 }] })).map((i) => i.path), ["beats.0.do.0.pointers.0.label"]);
+  assert.deepEqual(issues(add("ring", { label: "a".repeat(13) })).map((i) => i.path), ["beats.0.do.0.label"]);
+  assert.deepEqual(issues(add("table", { columns: ["order", "order", "status"] })), [{ path: "beats.0.do.0", message: "column id 'order' used twice" }]);
+  assert.deepEqual(issues(add("table", { columns: ["order", "", "status"] })).map((i) => i.path), ["beats.0.do.0.columns.1"]);
+  assert.deepEqual(issues(add("log", { start: 100_000, cursors: {} })).map((i) => i.path), ["beats.0.do.0.start"]);
+  assert.deepEqual(msgs(add("log", { start: 99_998, cursors: {} })),
+    [["beats.0.do.0", "offsets run to 100002; 5 digits fit, so keep start + entries at 100000 or less"]]);
+  assert.deepEqual(issues(add("log", { start: 99_995, cursors: { email: 100_000 } })), []);
+  // cursor names are free text, checked with a real message and path
+  assert.deepEqual(msgs(add("log", { cursors: { ["a".repeat(17)]: 40 } })), [[`beats.0.do.0.cursors.${"a".repeat(17)}`, "cursor name: 1 to 16 characters"]]);
+  assert.deepEqual(msgs(add("table", { highlight: [["1042"]] })).map(([p]) => p), ["beats.0.do.0.highlight.0"]);
+  assert.deepEqual(msgs(add("log", { entries: Array(10).fill("order-1042"), cursors: {} })),
+    [["beats.0.do.0", "log is 17.7 units wide, more than the 16-unit canvas; shorten the values or show fewer"]]);
+  assert.deepEqual(msgs(add("bytes", { values: Array(16).fill("01010101"), fields: [] })),
+    [["beats.0.do.0", "bytes is 21.8 units wide, more than the 16-unit canvas; shorten the values or show fewer"]]);
+  // a set that makes it too wide is caught as well
+  assert.equal(msgs(add("log", { cursors: {} }), set({ entries: Array(10).fill("order-1042") })).length, 1);
+});
